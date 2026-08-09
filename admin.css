@@ -1323,7 +1323,7 @@ html[data-theme="dark"] {
   .admin-site-preview,
   .admin-site-preview-image img,
   .admin-toast {
-    transition: none;
+    transition-duration: 160ms;
   }
 }
 
@@ -1892,5 +1892,53 @@ html[data-theme="dark"] {
   .admin-chat-send {
     width: 42px;
     height: 42px;
+  }
+}
+
+
+/* Mobile polish: keep the admin compact and readable. */
+@media (max-width: 560px) {
+  .admin-body {
+    overflow-x: hidden;
+  }
+
+  .admin-hero,
+  .admin-site-preview {
+    border-radius: 22px;
+  }
+
+  .admin-site-preview {
+    display: block;
+  }
+
+  .admin-site-preview-image {
+    min-height: 180px;
+  }
+
+  .admin-site-preview-copy {
+    padding: 20px;
+  }
+
+  .admin-view-tabs {
+    overflow-x: auto;
+    max-width: 100%;
+    scrollbar-width: none;
+  }
+
+  .admin-view-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .admin-chat-active {
+    height: min(72dvh, 620px);
+    min-height: 480px;
+  }
+
+  .admin-chat-messages {
+    padding: 14px 10px;
+  }
+
+  .admin-message {
+    max-width: 92%;
   }
 }

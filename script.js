@@ -256,7 +256,7 @@
           entry.target.classList.toggle("visible", entry.isIntersecting);
         });
       },
-      { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
+      { threshold: 0.01, rootMargin: "48px 0px 48px 0px" }
     );
     revealItems.forEach(registerRevealItem);
   } else {
