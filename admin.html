@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>nezhno.art — управление сайтом</title>
+
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="admin.css" />
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="admin.js" defer></script>
+</head>
+
+<body>
+  <main class="admin-page">
+    <section class="admin-login">
+      <div class="admin-login-card">
+        <div class="brand">
+          <span class="brand-mark">♡</span>
+          <span>
+            <strong>nezhno.art</strong>
+            <small>панель управления</small>
+          </span>
+        </div>
+
+        <h1>Вход</h1>
+        <p>Войдите в аккаунт администратора.</p>
+
+        <form id="login-form">
+          <label>
+            Email
+            <input
+              id="login-email"
+              type="email"
+              autocomplete="email"
+              required
+            />
+          </label>
+
+          <label>
+            Пароль
+            <input
+              id="login-password"
+              type="password"
+              autocomplete="current-password"
+              required
+            />
+          </label>
+
+          <button class="button button-primary button-full" type="submit">
+            Войти
+          </button>
+
+          <p id="login-error" role="alert"></p>
+        </form>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
