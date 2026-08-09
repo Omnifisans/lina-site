@@ -232,15 +232,23 @@ p {
 
 .main-nav {
   display: flex;
+  align-items: center;
   justify-content: center;
   gap: 25px;
 }
 
 .main-nav a {
   position: relative;
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
   color: var(--text-soft);
   font-size: 0.91rem;
   font-weight: 650;
+  line-height: 1.25;
+  text-align: center;
+  text-wrap: balance;
   transition: color var(--transition);
 }
 
@@ -272,6 +280,12 @@ p {
   display: flex;
   align-items: center;
   gap: 9px;
+}
+
+.header-actions .button,
+.account-button,
+#account-button-label {
+  text-align: center;
 }
 
 .icon-button {
