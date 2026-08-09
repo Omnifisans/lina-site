@@ -29,6 +29,23 @@
       }
 
       const products = await response.json();
+
+      const modelProduct = products.find((product) => product.id === 1);
+
+      if (modelProduct) {
+        const titleElement = document.getElementById("model-product-title");
+        const priceElement = document.getElementById("model-product-price");
+
+        if (titleElement) {
+          titleElement.textContent = modelProduct.title;
+        }
+
+        if (priceElement) {
+          priceElement.textContent =
+            `${new Intl.NumberFormat("ru-RU").format(modelProduct.price_from)} ₽`;
+        }
+      }
+
       console.log("[nezhno.art] Товары из Supabase:", products);
 
       if (products.length > 0) {
