@@ -6,22 +6,91 @@
   const TELEGRAM_USERNAME = "";
 
   // -------------------------
-  // Supabase: первый тест подключения
+  // Supabase: каталог услуг
   // -------------------------
   const SUPABASE_URL = "https://dalipumytxktfrtqhxxm.supabase.co";
   const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_re7xSQ02x55-CTUDSbIpYQ_1qX8tRqN";
 
-  const testSupabaseConnection = async () => {
+  const serviceGrid = document.getElementById("service-grid");
+
+  const categoryMeta = {
+    banner: { label: "Баннеры", button: "Обсудить баннер" },
+    stickers: { label: "Стикеры", button: "Обсудить стикеры" },
+    model: { label: "Модели", button: "Обсудить модель" },
+  };
+
+  const formatPrice = (value) =>
+    new Intl.NumberFormat("ru-RU").format(Number(value) || 0);
+
+  const createServiceCard = (product) => {
+    const meta = categoryMeta[product.category] || {
+      label: product.category || "Услуга",
+      button: "Обсудить заказ",
+    };
+
+    const article = document.createElement("article");
+    article.className = "service-card reveal visible";
+    article.dataset.productId = String(product.id);
+
+    const preview = document.createElement("div");
+    preview.className = `service-preview${product.category === "stickers" ? " service-preview-stickers" : ""}`;
+
+    const image = document.createElement("img");
+    image.src = product.image_url || "nezhno-art.jpg";
+    image.alt = `Пример: ${product.title || "работа nezhno.art"}`;
+    image.loading = "lazy";
+    image.addEventListener("error", () => {
+      if (!image.src.endsWith("nezhno-art.jpg")) image.src = "nezhno-art.jpg";
+    });
+    preview.appendChild(image);
+
+    const body = document.createElement("div");
+    body.className = "service-body";
+
+    const label = document.createElement("span");
+    label.className = "service-label";
+    label.textContent = meta.label;
+
+    const title = document.createElement("h3");
+    title.textContent = product.title || "Услуга";
+
+    const description = document.createElement("p");
+    description.textContent = product.description || "Подробности можно обсудить с автором.";
+
+    const price = document.createElement("div");
+    price.className = "service-price";
+    const pricePrefix = document.createElement("span");
+    pricePrefix.textContent = "от";
+    const priceValue = document.createElement("strong");
+    priceValue.textContent = `${formatPrice(product.price_from)} ₽`;
+    price.append(pricePrefix, priceValue);
+
+    const button = document.createElement("button");
+    button.className = "button button-primary button-full";
+    button.type = "button";
+    button.dataset.openChat = "";
+    button.dataset.service = product.title || meta.label;
+    button.textContent = meta.button;
+
+    body.append(label, title, description, price, button);
+    article.append(preview, body);
+    return article;
+  };
+
+  const loadProducts = async () => {
     try {
-      const response = await fetch(
-        `${SUPABASE_URL}/rest/v1/products?select=id,title,price_from&order=id.asc`,
-        {
-          headers: {
-            apikey: SUPABASE_PUBLISHABLE_KEY,
-            Accept: "application/json",
-          },
-        }
-      );
+      const params = new URLSearchParams({
+        select: "id,title,price_from,category,description,image_url,is_active,sort_order",
+        is_active: "eq.true",
+        order: "sort_order.asc.nullslast,id.asc",
+      });
+
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/products?${params.toString()}`, {
+        headers: {
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+          Accept: "application/json",
+        },
+      });
 
       if (!response.ok) {
         const details = await response.text();
@@ -29,38 +98,24 @@
       }
 
       const products = await response.json();
+      console.log("[nezhno.art] Активные услуги из Supabase:", products);
 
-      const modelProduct = products.find((product) => product.id === 1);
-
-      if (modelProduct) {
-        const titleElement = document.getElementById("model-product-title");
-        const priceElement = document.getElementById("model-product-price");
-
-        if (titleElement) {
-          titleElement.textContent = modelProduct.title;
-        }
-
-        if (priceElement) {
-          priceElement.textContent =
-            `${new Intl.NumberFormat("ru-RU").format(modelProduct.price_from)} ₽`;
-        }
+      // Если база временно недоступна или пуста, оставляем статические карточки из HTML как fallback.
+      if (!Array.isArray(products) || products.length === 0 || !serviceGrid) {
+        console.warn("[nezhno.art] Активных услуг в products нет — оставлены резервные карточки из HTML.");
+        return;
       }
 
-      console.log("[nezhno.art] Товары из Supabase:", products);
-
-      if (products.length > 0) {
-        console.log(
-          `[nezhno.art] Supabase подключён: ${products[0].title} — от ${products[0].price_from} ₽`
-        );
-      } else {
-        console.warn("[nezhno.art] Supabase отвечает, но таблица products пуста.");
-      }
+      const cards = products.map(createServiceCard);
+      serviceGrid.replaceChildren(...cards);
+      console.log(`[nezhno.art] Каталог обновлён из Supabase: ${products.length} поз.`);
     } catch (error) {
-      console.error("[nezhno.art] Ошибка подключения к Supabase:", error);
+      console.error("[nezhno.art] Не удалось загрузить каталог из Supabase:", error);
+      console.info("[nezhno.art] Используются резервные карточки из index.html.");
     }
   };
 
-  testSupabaseConnection();
+  loadProducts();
 
   const root = document.documentElement;
   const body = document.body;
@@ -253,7 +308,6 @@
   const chatForm = document.getElementById("chat-form");
   const chatInput = document.getElementById("chat-input");
   const chatMessages = document.getElementById("chat-messages");
-  const openChatButtons = document.querySelectorAll("[data-open-chat]");
   const chatPresetButtons = document.querySelectorAll("[data-chat-preset]");
   const copyChatButton = document.getElementById("copy-chat");
   const openTelegramButton = document.getElementById("open-telegram");
@@ -370,8 +424,11 @@
     body.classList.remove("no-scroll");
   };
 
-  openChatButtons.forEach((button) => {
-    button.addEventListener("click", () => openChat(button.dataset.service || ""));
+  // Делегирование кликов нужно и для карточек, которые приходят из Supabase после загрузки страницы.
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-open-chat]");
+    if (!button) return;
+    openChat(button.dataset.service || "");
   });
   chatClose?.addEventListener("click", closeChat);
   chatBackdrop?.addEventListener("click", closeChat);
