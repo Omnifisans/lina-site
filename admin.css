@@ -498,13 +498,14 @@ html[data-theme="dark"] {
 }
 
 .admin-product-description {
-  display: -webkit-box;
-  min-height: 4.3em;
-  margin-bottom: 18px;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  font-size: 0.9rem;
+    display: -webkit-box;
+    min-height: 4.3em;
+    margin-bottom: 18px;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    line-clamp: 3;
+    -webkit-line-clamp: 3;
+    font-size: 0.9rem;
 }
 
 .admin-product-price {
