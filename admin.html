@@ -1,9 +1,11 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-theme="light">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>nezhno.art — управление сайтом</title>
+  <meta name="description" content="Панель управления каталогом nezhno.art" />
+  <meta name="theme-color" content="#fff9f8" />
+  <title>nezhno.art — панель управления</title>
 
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="admin.css" />
@@ -11,51 +13,298 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="admin.js" defer></script>
 </head>
+<body class="admin-body">
+  <a class="skip-link" href="#admin-main">Перейти к содержимому</a>
 
-<body>
-  <main class="admin-page">
-    <section class="admin-login">
-      <div class="admin-login-card">
-        <div class="brand">
-          <span class="brand-mark">♡</span>
+  <div class="admin-boot" id="admin-boot" aria-live="polite">
+    <div class="admin-boot-card">
+      <span class="admin-loader" aria-hidden="true"></span>
+      <strong>Проверяем доступ…</strong>
+      <small>nezhno.art</small>
+    </div>
+  </div>
+
+  <main class="admin-auth hidden" id="auth-screen">
+    <section class="admin-login-card" aria-labelledby="login-title">
+      <a class="admin-login-brand" href="./" aria-label="Вернуться на сайт nezhno.art">
+        <span class="brand-mark" aria-hidden="true">♡</span>
+        <span>
+          <strong>nezhno.art</strong>
+          <small>панель управления</small>
+        </span>
+      </a>
+
+      <div class="admin-login-copy">
+        <span class="admin-kicker">Только для администратора</span>
+        <h1 id="login-title">Вход</h1>
+        <p>Войдите в аккаунт Лины, чтобы управлять товарами на сайте.</p>
+      </div>
+
+      <form class="admin-form" id="login-form">
+        <label class="admin-field">
+          <span>Email</span>
+          <input id="login-email" type="email" autocomplete="email" required />
+        </label>
+
+        <label class="admin-field">
+          <span>Пароль</span>
+          <input id="login-password" type="password" autocomplete="current-password" required />
+        </label>
+
+        <p class="admin-form-error" id="login-error" role="alert"></p>
+
+        <button class="button button-primary button-full" id="login-submit" type="submit">
+          Войти
+        </button>
+      </form>
+
+      <div class="admin-login-footer">
+        <a href="./">← Вернуться на сайт</a>
+        <button class="admin-theme-text" id="auth-theme-toggle" type="button">Сменить тему</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="admin-shell hidden" id="admin-shell">
+    <header class="admin-header">
+      <div class="admin-header-inner">
+        <a class="brand admin-brand" href="./" aria-label="nezhno.art — вернуться на сайт">
+          <span class="brand-mark" aria-hidden="true">♡</span>
           <span>
             <strong>nezhno.art</strong>
             <small>панель управления</small>
           </span>
-        </div>
+        </a>
 
-        <h1>Вход</h1>
-        <p>Войдите в аккаунт администратора.</p>
+        <div class="admin-header-actions">
+          <span class="admin-user-pill" id="admin-user-email" title="Текущий аккаунт"></span>
 
-        <form id="login-form">
-          <label>
-            Email
-            <input
-              id="login-email"
-              type="email"
-              autocomplete="email"
-              required
-            />
-          </label>
-
-          <label>
-            Пароль
-            <input
-              id="login-password"
-              type="password"
-              autocomplete="current-password"
-              required
-            />
-          </label>
-
-          <button class="button button-primary button-full" type="submit">
-            Войти
+          <button class="icon-button" id="theme-toggle" type="button" aria-label="Переключить тему" title="Переключить тему">
+            <span class="theme-icon theme-icon-sun" aria-hidden="true">☀</span>
+            <span class="theme-icon theme-icon-moon" aria-hidden="true">☾</span>
           </button>
 
-          <p id="login-error" role="alert"></p>
-        </form>
+          <a class="button button-secondary admin-back-button" href="./">
+            <span aria-hidden="true">←</span>
+            <span>Вернуться на сайт</span>
+          </a>
+
+          <button class="button button-ghost admin-logout-button" id="logout-button" type="button">
+            Выйти
+          </button>
+        </div>
       </div>
-    </section>
-  </main>
+    </header>
+
+    <main class="admin-main" id="admin-main">
+      <section class="admin-hero">
+        <div class="admin-hero-copy">
+          <span class="admin-kicker">Каталог nezhno.art</span>
+          <h1>Управление товарами</h1>
+          <p>Добавляйте услуги, меняйте цены и описания, загружайте изображения и управляйте тем, что видно на основной странице.</p>
+
+          <div class="admin-hero-actions">
+            <button class="button button-primary" id="add-product-button" type="button">
+              <span aria-hidden="true">＋</span>
+              Добавить товар
+            </button>
+            <button class="button button-secondary" id="refresh-products-button" type="button">
+              <span aria-hidden="true">↻</span>
+              Обновить список
+            </button>
+          </div>
+        </div>
+
+        <a class="admin-site-preview" href="./" aria-label="Открыть основную страницу nezhno.art">
+          <span class="admin-site-preview-image">
+            <img src="nezhno-art.jpg" alt="Превью основной страницы nezhno.art" />
+          </span>
+          <span class="admin-site-preview-copy">
+            <span>Основной сайт</span>
+            <strong>Посмотреть глазами посетителя</strong>
+            <small>Нажмите, чтобы вернуться на сайт →</small>
+          </span>
+        </a>
+      </section>
+
+      <section class="admin-stats" aria-label="Сводка каталога">
+        <article class="admin-stat-card">
+          <span>Всего товаров</span>
+          <strong id="stat-total">—</strong>
+        </article>
+        <article class="admin-stat-card">
+          <span>Опубликовано</span>
+          <strong id="stat-active">—</strong>
+        </article>
+        <article class="admin-stat-card">
+          <span>Скрыто</span>
+          <strong id="stat-hidden">—</strong>
+        </article>
+      </section>
+
+      <section class="admin-catalog" aria-labelledby="catalog-title">
+        <div class="admin-section-heading">
+          <div>
+            <span class="admin-kicker">Товары</span>
+            <h2 id="catalog-title">Каталог</h2>
+          </div>
+
+          <div class="admin-toolbar">
+            <label class="admin-search">
+              <span class="sr-only">Поиск по товарам</span>
+              <span aria-hidden="true">⌕</span>
+              <input id="product-search" type="search" placeholder="Найти товар…" autocomplete="off" />
+            </label>
+
+            <label class="admin-filter">
+              <span class="sr-only">Фильтр видимости</span>
+              <select id="visibility-filter">
+                <option value="all">Все</option>
+                <option value="active">Опубликованные</option>
+                <option value="hidden">Скрытые</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="admin-status-card" id="products-loading" aria-live="polite">
+          <span class="admin-loader" aria-hidden="true"></span>
+          <div>
+            <strong>Загружаем каталог…</strong>
+            <p>Получаем товары из Supabase.</p>
+          </div>
+        </div>
+
+        <div class="admin-status-card admin-status-error hidden" id="products-error" role="alert">
+          <span aria-hidden="true">!</span>
+          <div>
+            <strong>Не удалось загрузить товары</strong>
+            <p id="products-error-text">Попробуйте обновить список.</p>
+          </div>
+          <button class="button button-secondary" id="retry-products-button" type="button">Повторить</button>
+        </div>
+
+        <div class="admin-empty hidden" id="products-empty">
+          <span class="admin-empty-icon" aria-hidden="true">♡</span>
+          <h3>Здесь пока пусто</h3>
+          <p>Добавьте первый товар, и он появится в каталоге.</p>
+          <button class="button button-primary" id="empty-add-button" type="button">Добавить товар</button>
+        </div>
+
+        <div class="admin-empty hidden" id="products-no-results">
+          <span class="admin-empty-icon" aria-hidden="true">⌕</span>
+          <h3>Ничего не найдено</h3>
+          <p>Попробуйте изменить запрос или фильтр.</p>
+        </div>
+
+        <div class="admin-products-grid" id="products-grid" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog class="admin-dialog" id="product-dialog" aria-labelledby="product-dialog-title">
+    <form class="admin-dialog-card" id="product-form">
+      <div class="admin-dialog-header">
+        <div>
+          <span class="admin-kicker" id="product-dialog-kicker">Новый товар</span>
+          <h2 id="product-dialog-title">Добавить товар</h2>
+        </div>
+        <button class="admin-dialog-close" id="product-dialog-close" type="button" aria-label="Закрыть">×</button>
+      </div>
+
+      <div class="admin-dialog-body">
+        <div class="admin-form-column">
+          <input id="product-id" type="hidden" />
+
+          <label class="admin-field">
+            <span>Название <b aria-hidden="true">*</b></span>
+            <input id="product-title" type="text" maxlength="120" required placeholder="Например, Баннер для соцсетей" />
+          </label>
+
+          <div class="admin-form-row">
+            <label class="admin-field">
+              <span>Категория <b aria-hidden="true">*</b></span>
+              <select id="product-category" required>
+                <option value="banner">Баннеры</option>
+                <option value="stickers">Стикеры</option>
+                <option value="model">Модели</option>
+              </select>
+            </label>
+
+            <label class="admin-field">
+              <span>Цена от, ₽ <b aria-hidden="true">*</b></span>
+              <input id="product-price" type="number" min="0" step="1" required inputmode="numeric" placeholder="200" />
+            </label>
+          </div>
+
+          <label class="admin-field">
+            <span>Описание</span>
+            <textarea id="product-description" rows="5" maxlength="600" placeholder="Коротко опишите услугу…"></textarea>
+            <small><span id="description-counter">0</span>/600</small>
+          </label>
+
+          <div class="admin-form-row admin-form-row-compact">
+            <label class="admin-field">
+              <span>Порядок</span>
+              <input id="product-sort-order" type="number" min="0" step="1" inputmode="numeric" placeholder="0" />
+              <small>Чем меньше число, тем выше товар.</small>
+            </label>
+
+            <label class="admin-switch-field">
+              <span>
+                <strong>Показывать на сайте</strong>
+                <small>Можно сохранить товар скрытым.</small>
+              </span>
+              <input id="product-active" type="checkbox" checked />
+              <i aria-hidden="true"></i>
+            </label>
+          </div>
+        </div>
+
+        <div class="admin-image-column">
+          <div class="admin-image-preview" id="image-preview-wrap">
+            <img id="image-preview" src="nezhno-art.jpg" alt="Предпросмотр изображения товара" />
+            <span class="admin-image-badge" id="image-status">Текущее изображение</span>
+          </div>
+
+          <label class="admin-upload-zone" for="product-image">
+            <span class="admin-upload-icon" aria-hidden="true">↑</span>
+            <strong>Загрузить новое изображение</strong>
+            <small>PNG, JPG, WEBP и другие изображения. До 50 МБ.</small>
+            <input id="product-image" type="file" accept="image/*" />
+          </label>
+
+          <button class="admin-remove-image hidden" id="remove-image-button" type="button">
+            Убрать изображение
+          </button>
+
+          <p class="admin-image-hint" id="selected-image-name">Если файл не выбран, текущее изображение останется без изменений.</p>
+        </div>
+      </div>
+
+      <p class="admin-form-error" id="product-form-error" role="alert"></p>
+
+      <div class="admin-dialog-footer">
+        <button class="button button-secondary" id="product-cancel-button" type="button">Отмена</button>
+        <button class="button button-primary" id="product-save-button" type="submit">Сохранить</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="admin-dialog admin-confirm-dialog" id="delete-dialog" aria-labelledby="delete-title">
+    <div class="admin-dialog-card admin-confirm-card">
+      <button class="admin-dialog-close" id="delete-dialog-close" type="button" aria-label="Закрыть">×</button>
+      <span class="admin-danger-icon" aria-hidden="true">×</span>
+      <span class="admin-kicker">Удаление</span>
+      <h2 id="delete-title">Удалить товар?</h2>
+      <p>Товар <strong id="delete-product-name"></strong> исчезнет из каталога. Если его изображение хранится в <code>product-images</code>, оно тоже будет удалено.</p>
+      <div class="admin-dialog-footer">
+        <button class="button button-secondary" id="delete-cancel-button" type="button">Отмена</button>
+        <button class="button admin-danger-button" id="delete-confirm-button" type="button">Удалить</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="admin-toast" id="admin-toast" role="status" aria-live="polite"></div>
 </body>
 </html>

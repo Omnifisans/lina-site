@@ -1,185 +1,884 @@
 (() => {
   "use strict";
 
-  const SUPABASE_URL = "https://dalipumytxktfrtqhxxm.supabase.co";
-  const SUPABASE_PUBLISHABLE_KEY =
-    "sb_publishable_re7xSQ02x55-CTUDSbIpYQ_1qX8tRqN";
+  // =========================================================
+  // Configuration
+  // =========================================================
 
-  // UID аккаунта Лины.
-  // Это не пароль и не секрет. Тот же UID уже используется в RLS-политиках.
+  const SUPABASE_URL = "https://dalipumytxktfrtqhxxm.supabase.co";
+  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_re7xSQ02x55-CTUDSbIpYQ_1qX8tRqN";
   const LINA_USER_ID = "984948c4-d839-4cc7-9635-8868c7ddc6a7";
+  const STORAGE_BUCKET = "product-images";
+  const MAX_IMAGE_SIZE = 50 * 1024 * 1024;
+  const FALLBACK_IMAGE = "nezhno-art.jpg";
+
+  const CATEGORY_META = {
+    banner: "Баннеры",
+    stickers: "Стикеры",
+    model: "Модели",
+  };
+
+  if (!window.supabase?.createClient) {
+    console.error("[nezhno.art admin] Supabase JS не загрузился.");
+    return;
+  }
 
   const supabaseClient = window.supabase.createClient(
     SUPABASE_URL,
     SUPABASE_PUBLISHABLE_KEY
   );
 
+  // =========================================================
+  // DOM
+  // =========================================================
+
+  const root = document.documentElement;
+
+  const bootScreen = document.getElementById("admin-boot");
+  const authScreen = document.getElementById("auth-screen");
+  const adminShell = document.getElementById("admin-shell");
+
   const loginForm = document.getElementById("login-form");
-  const emailInput = document.getElementById("login-email");
-  const passwordInput = document.getElementById("login-password");
-  const errorElement = document.getElementById("login-error");
-  const submitButton = loginForm?.querySelector('button[type="submit"]');
+  const loginEmail = document.getElementById("login-email");
+  const loginPassword = document.getElementById("login-password");
+  const loginError = document.getElementById("login-error");
+  const loginSubmit = document.getElementById("login-submit");
+  const authThemeToggle = document.getElementById("auth-theme-toggle");
 
-  const loginCard = document.querySelector(".admin-login-card");
+  const themeToggle = document.getElementById("theme-toggle");
+  const logoutButton = document.getElementById("logout-button");
+  const adminUserEmail = document.getElementById("admin-user-email");
 
-  const setError = (message = "") => {
-    if (!errorElement) return;
+  const addProductButton = document.getElementById("add-product-button");
+  const emptyAddButton = document.getElementById("empty-add-button");
+  const refreshProductsButton = document.getElementById("refresh-products-button");
+  const retryProductsButton = document.getElementById("retry-products-button");
+  const productSearch = document.getElementById("product-search");
+  const visibilityFilter = document.getElementById("visibility-filter");
 
-    errorElement.textContent = message;
-    errorElement.classList.toggle("visible", Boolean(message));
+  const productsGrid = document.getElementById("products-grid");
+  const productsLoading = document.getElementById("products-loading");
+  const productsError = document.getElementById("products-error");
+  const productsErrorText = document.getElementById("products-error-text");
+  const productsEmpty = document.getElementById("products-empty");
+  const productsNoResults = document.getElementById("products-no-results");
+
+  const statTotal = document.getElementById("stat-total");
+  const statActive = document.getElementById("stat-active");
+  const statHidden = document.getElementById("stat-hidden");
+
+  const productDialog = document.getElementById("product-dialog");
+  const productDialogClose = document.getElementById("product-dialog-close");
+  const productCancelButton = document.getElementById("product-cancel-button");
+  const productForm = document.getElementById("product-form");
+  const productDialogKicker = document.getElementById("product-dialog-kicker");
+  const productDialogTitle = document.getElementById("product-dialog-title");
+  const productFormError = document.getElementById("product-form-error");
+  const productSaveButton = document.getElementById("product-save-button");
+
+  const productId = document.getElementById("product-id");
+  const productTitle = document.getElementById("product-title");
+  const productCategory = document.getElementById("product-category");
+  const productPrice = document.getElementById("product-price");
+  const productDescription = document.getElementById("product-description");
+  const descriptionCounter = document.getElementById("description-counter");
+  const productSortOrder = document.getElementById("product-sort-order");
+  const productActive = document.getElementById("product-active");
+  const productImage = document.getElementById("product-image");
+  const imagePreview = document.getElementById("image-preview");
+  const imageStatus = document.getElementById("image-status");
+  const selectedImageName = document.getElementById("selected-image-name");
+  const removeImageButton = document.getElementById("remove-image-button");
+
+  const deleteDialog = document.getElementById("delete-dialog");
+  const deleteDialogClose = document.getElementById("delete-dialog-close");
+  const deleteCancelButton = document.getElementById("delete-cancel-button");
+  const deleteConfirmButton = document.getElementById("delete-confirm-button");
+  const deleteProductName = document.getElementById("delete-product-name");
+
+  const toast = document.getElementById("admin-toast");
+
+  // =========================================================
+  // State
+  // =========================================================
+
+  let products = [];
+  let editingProduct = null;
+  let deletingProduct = null;
+  let imageObjectUrl = null;
+  let removeExistingImage = false;
+  let toastTimer = null;
+  let isSaving = false;
+
+  // =========================================================
+  // Small helpers
+  // =========================================================
+
+  const formatPrice = (value) =>
+    new Intl.NumberFormat("ru-RU").format(Number(value) || 0);
+
+  const normalizeText = (value) => String(value || "").trim().toLocaleLowerCase("ru");
+
+  const setFormError = (element, message = "") => {
+    if (!element) return;
+    element.textContent = message;
+    element.classList.toggle("visible", Boolean(message));
   };
 
-  const setLoading = (loading) => {
-    if (!submitButton) return;
-
-    submitButton.disabled = loading;
-    submitButton.textContent = loading ? "Входим..." : "Войти";
+  const showToast = (message, type = "success") => {
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.toggle("is-error", type === "error");
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("show"), 2800);
   };
 
-  const showLoggedIn = (user) => {
-    if (!loginCard) return;
+  const setButtonLoading = (button, loading, loadingText) => {
+    if (!button) return;
 
-    loginCard.innerHTML = `
-      <div class="brand">
-        <span class="brand-mark">♡</span>
-        <span>
-          <strong>nezhno.art</strong>
-          <small>панель управления</small>
-        </span>
-      </div>
-
-      <div class="admin-success">
-        <div class="admin-success-icon">✓</div>
-
-        <h1>Вход выполнен</h1>
-
-        <p>
-          Авторизация работает. Аккаунт администратора успешно подключён.
-        </p>
-
-        <div class="admin-user">
-          <span>Вы вошли как</span>
-          <strong>${escapeHtml(user.email || "администратор")}</strong>
-        </div>
-
-        <p class="admin-next-message">
-          Дальше здесь появится управление товарами.
-        </p>
-
-        <button
-          id="logout-button"
-          class="button admin-secondary-button"
-          type="button"
-        >
-          Выйти
-        </button>
-      </div>
-    `;
-
-    document
-      .getElementById("logout-button")
-      ?.addEventListener("click", logout);
-  };
-
-  const escapeHtml = (value) => {
-    return String(value)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  };
-
-  const verifyLina = async (user) => {
-    if (!user || user.id !== LINA_USER_ID) {
-      await supabaseClient.auth.signOut();
-      return false;
+    if (loading) {
+      button.dataset.loadingOriginalText = button.textContent.trim();
+      button.disabled = true;
+      button.textContent = loadingText;
+      return;
     }
 
-    return true;
+    button.disabled = false;
+    button.textContent = button.dataset.loadingOriginalText || button.textContent;
+    delete button.dataset.loadingOriginalText;
   };
 
-  const logout = async () => {
-    await supabaseClient.auth.signOut();
-    window.location.reload();
+  const openDialog = (dialog) => {
+    if (!dialog) return;
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+  };
+
+  const closeDialog = (dialog) => {
+    if (!dialog) return;
+    if (typeof dialog.close === "function" && dialog.open) dialog.close();
+    else dialog.removeAttribute("open");
+  };
+
+  const buildFallbackImage = (img) => {
+    img.addEventListener(
+      "error",
+      () => {
+        if (!img.src.endsWith(FALLBACK_IMAGE)) img.src = FALLBACK_IMAGE;
+      },
+      { once: true }
+    );
+  };
+
+  // =========================================================
+  // Theme — same localStorage key as the main page
+  // =========================================================
+
+  const getInitialTheme = () => {
+    try {
+      const saved = localStorage.getItem("nezhno-theme");
+      if (saved === "light" || saved === "dark") return saved;
+    } catch (_) {
+      // Storage can be blocked in private modes.
+    }
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  };
+
+  const applyTheme = (theme) => {
+    root.dataset.theme = theme;
+    try {
+      localStorage.setItem("nezhno-theme", theme);
+    } catch (_) {
+      // The theme still works for this page load.
+    }
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", theme === "dark" ? "#160f11" : "#fff9f8");
+  };
+
+  const toggleTheme = () => applyTheme(root.dataset.theme === "dark" ? "light" : "dark");
+
+  applyTheme(getInitialTheme());
+  themeToggle?.addEventListener("click", toggleTheme);
+  authThemeToggle?.addEventListener("click", toggleTheme);
+
+  // =========================================================
+  // Auth
+  // =========================================================
+
+  const showBoot = () => {
+    bootScreen?.classList.remove("hidden");
+    authScreen?.classList.add("hidden");
+    adminShell?.classList.add("hidden");
+  };
+
+  const showLogin = () => {
+    bootScreen?.classList.add("hidden");
+    authScreen?.classList.remove("hidden");
+    adminShell?.classList.add("hidden");
+    setFormError(loginError, "");
+  };
+
+  const showAdmin = (user) => {
+    bootScreen?.classList.add("hidden");
+    authScreen?.classList.add("hidden");
+    adminShell?.classList.remove("hidden");
+    if (adminUserEmail) adminUserEmail.textContent = user?.email || "Администратор";
+  };
+
+  const signOutForeignUser = async () => {
+    try {
+      await supabaseClient.auth.signOut();
+    } catch (error) {
+      console.warn("[nezhno.art admin] Не удалось завершить чужую сессию:", error);
+    }
+  };
+
+  const verifyUser = async () => {
+    const { data, error } = await supabaseClient.auth.getUser();
+    if (error || !data?.user) return null;
+
+    if (data.user.id !== LINA_USER_ID) {
+      await signOutForeignUser();
+      return null;
+    }
+
+    return data.user;
+  };
+
+  const initializeAuth = async () => {
+    showBoot();
+    try {
+      const user = await verifyUser();
+      if (!user) {
+        showLogin();
+        return;
+      }
+      showAdmin(user);
+      await loadProducts();
+    } catch (error) {
+      console.error("[nezhno.art admin] Ошибка проверки авторизации:", error);
+      showLogin();
+      setFormError(loginError, "Не удалось проверить авторизацию. Обновите страницу и попробуйте снова.");
+    }
   };
 
   loginForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    setFormError(loginError, "");
 
-    setError("");
-
-    const email = emailInput?.value.trim() || "";
-    const password = passwordInput?.value || "";
+    const email = loginEmail?.value.trim() || "";
+    const password = loginPassword?.value || "";
 
     if (!email || !password) {
-      setError("Введите email и пароль.");
+      setFormError(loginError, "Введите email и пароль.");
       return;
     }
 
-    setLoading(true);
+    setButtonLoading(loginSubmit, true, "Входим…");
 
     try {
-      const { data, error } =
-        await supabaseClient.auth.signInWithPassword({
-          email,
-          password,
-        });
+      const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
 
-      if (error) {
-        console.error("[nezhno.art admin] Ошибка входа:", error);
-        setError("Неверный email или пароль.");
+      if (error || !data?.user) {
+        console.warn("[nezhno.art admin] Ошибка входа:", error);
+        setFormError(loginError, "Неверный email или пароль.");
         return;
       }
 
-      const allowed = await verifyLina(data.user);
-
-      if (!allowed) {
-        setError("У этого аккаунта нет доступа к панели управления.");
+      if (data.user.id !== LINA_USER_ID) {
+        await signOutForeignUser();
+        setFormError(loginError, "У этого аккаунта нет доступа к панели управления.");
         return;
       }
 
-      showLoggedIn(data.user);
+      loginPassword.value = "";
+      showAdmin(data.user);
+      await loadProducts();
     } catch (error) {
-      console.error("[nezhno.art admin] Ошибка:", error);
-
-      setError(
-        "Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз."
-      );
+      console.error("[nezhno.art admin] Ошибка входа:", error);
+      setFormError(loginError, "Не удалось связаться с сервером. Проверьте интернет и попробуйте снова.");
     } finally {
-      setLoading(false);
+      setButtonLoading(loginSubmit, false, "Входим…");
     }
   });
 
-  const checkExistingSession = async () => {
+  logoutButton?.addEventListener("click", async () => {
+    setButtonLoading(logoutButton, true, "…");
     try {
-      const {
-        data: { session },
-        error,
-      } = await supabaseClient.auth.getSession();
+      await supabaseClient.auth.signOut();
+    } finally {
+      window.location.reload();
+    }
+  });
 
-      if (error) {
-        console.error(
-          "[nezhno.art admin] Не удалось проверить сессию:",
-          error
-        );
-        return;
-      }
+  // If the session expires or the user signs out in another tab, close the panel.
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    if (event === "SIGNED_OUT" && !authScreen?.classList.contains("hidden")) return;
+    if (event === "SIGNED_OUT") showLogin();
+    if (session?.user && session.user.id !== LINA_USER_ID) signOutForeignUser();
+  });
 
-      if (!session?.user) return;
+  // =========================================================
+  // Products
+  // =========================================================
 
-      const allowed = await verifyLina(session.user);
-
-      if (allowed) {
-        showLoggedIn(session.user);
-      }
-    } catch (error) {
-      console.error(
-        "[nezhno.art admin] Ошибка проверки авторизации:",
-        error
-      );
+  const setProductsLoading = (loading) => {
+    productsLoading?.classList.toggle("hidden", !loading);
+    if (loading) {
+      productsError?.classList.add("hidden");
+      productsEmpty?.classList.add("hidden");
+      productsNoResults?.classList.add("hidden");
     }
   };
 
-  checkExistingSession();
+  const updateStats = () => {
+    const active = products.filter((item) => item.is_active).length;
+    if (statTotal) statTotal.textContent = String(products.length);
+    if (statActive) statActive.textContent = String(active);
+    if (statHidden) statHidden.textContent = String(products.length - active);
+  };
+
+  const getFilteredProducts = () => {
+    const query = normalizeText(productSearch?.value);
+    const visibility = visibilityFilter?.value || "all";
+
+    return products.filter((product) => {
+      const matchesVisibility =
+        visibility === "all" ||
+        (visibility === "active" && product.is_active) ||
+        (visibility === "hidden" && !product.is_active);
+
+      if (!matchesVisibility) return false;
+      if (!query) return true;
+
+      const haystack = normalizeText(
+        `${product.title || ""} ${product.description || ""} ${CATEGORY_META[product.category] || product.category || ""}`
+      );
+      return haystack.includes(query);
+    });
+  };
+
+  const createProductCard = (product) => {
+    const article = document.createElement("article");
+    article.className = "admin-product-card";
+    article.dataset.productId = String(product.id);
+
+    const imageWrap = document.createElement("div");
+    imageWrap.className = "admin-product-image";
+
+    const image = document.createElement("img");
+    image.src = product.image_url || FALLBACK_IMAGE;
+    image.alt = `Изображение товара: ${product.title || "без названия"}`;
+    image.loading = "lazy";
+    buildFallbackImage(image);
+
+    const state = document.createElement("span");
+    state.className = `admin-product-state${product.is_active ? "" : " is-hidden"}`;
+    state.textContent = product.is_active ? "Опубликован" : "Скрыт";
+
+    imageWrap.append(image, state);
+
+    const body = document.createElement("div");
+    body.className = "admin-product-body";
+
+    const topLine = document.createElement("div");
+    topLine.className = "admin-product-topline";
+
+    const category = document.createElement("span");
+    category.className = "admin-product-category";
+    category.textContent = CATEGORY_META[product.category] || product.category || "Без категории";
+
+    const order = document.createElement("span");
+    order.className = "admin-product-order";
+    order.textContent = `Порядок: ${Number.isFinite(Number(product.sort_order)) ? product.sort_order : "—"}`;
+
+    topLine.append(category, order);
+
+    const title = document.createElement("h3");
+    title.textContent = product.title || "Без названия";
+
+    const description = document.createElement("p");
+    description.className = "admin-product-description";
+    description.textContent = product.description || "Описание не добавлено.";
+
+    const price = document.createElement("div");
+    price.className = "admin-product-price";
+    const pricePrefix = document.createElement("span");
+    pricePrefix.textContent = "от";
+    const priceValue = document.createElement("strong");
+    priceValue.textContent = `${formatPrice(product.price_from)} ₽`;
+    price.append(pricePrefix, priceValue);
+
+    const actions = document.createElement("div");
+    actions.className = "admin-product-actions";
+
+    const editButton = document.createElement("button");
+    editButton.className = "admin-card-button";
+    editButton.type = "button";
+    editButton.textContent = "Редактировать";
+    editButton.addEventListener("click", () => openEditProduct(product));
+
+    const visibilityButton = document.createElement("button");
+    visibilityButton.className = "admin-card-button";
+    visibilityButton.type = "button";
+    visibilityButton.title = product.is_active ? "Скрыть с основной страницы" : "Опубликовать на основной странице";
+    visibilityButton.setAttribute("aria-label", visibilityButton.title);
+    visibilityButton.textContent = product.is_active ? "◉" : "○";
+    visibilityButton.addEventListener("click", () => toggleProductVisibility(product, visibilityButton));
+
+    const deleteButton = document.createElement("button");
+    deleteButton.className = "admin-card-button is-danger";
+    deleteButton.type = "button";
+    deleteButton.title = "Удалить товар";
+    deleteButton.setAttribute("aria-label", `Удалить ${product.title || "товар"}`);
+    deleteButton.textContent = "×";
+    deleteButton.addEventListener("click", () => openDeleteProduct(product));
+
+    actions.append(editButton, visibilityButton, deleteButton);
+    body.append(topLine, title, description, price, actions);
+    article.append(imageWrap, body);
+
+    return article;
+  };
+
+  const renderProducts = () => {
+    if (!productsGrid) return;
+
+    updateStats();
+    const filtered = getFilteredProducts();
+    productsGrid.replaceChildren(...filtered.map(createProductCard));
+
+    productsEmpty?.classList.toggle("hidden", products.length !== 0);
+    productsNoResults?.classList.toggle(
+      "hidden",
+      products.length === 0 || filtered.length !== 0
+    );
+  };
+
+  const loadProducts = async ({ silent = false } = {}) => {
+    if (!silent) setProductsLoading(true);
+    productsError?.classList.add("hidden");
+
+    try {
+      const { data, error } = await supabaseClient
+        .from("products")
+        .select("id,title,price_from,category,description,image_url,is_active,sort_order")
+        .order("sort_order", { ascending: true, nullsFirst: false })
+        .order("id", { ascending: true });
+
+      if (error) throw error;
+
+      products = Array.isArray(data) ? data : [];
+      renderProducts();
+    } catch (error) {
+      console.error("[nezhno.art admin] Не удалось загрузить товары:", error);
+      if (productsErrorText) productsErrorText.textContent = error.message || "Неизвестная ошибка Supabase.";
+      productsError?.classList.remove("hidden");
+      showToast("Не удалось загрузить каталог", "error");
+    } finally {
+      setProductsLoading(false);
+    }
+  };
+
+  const toggleProductVisibility = async (product, button) => {
+    if (!product || !button) return;
+    button.disabled = true;
+
+    const nextValue = !product.is_active;
+    try {
+      const { error } = await supabaseClient
+        .from("products")
+        .update({ is_active: nextValue })
+        .eq("id", product.id);
+
+      if (error) throw error;
+
+      product.is_active = nextValue;
+      renderProducts();
+      showToast(nextValue ? "Товар опубликован" : "Товар скрыт с сайта");
+    } catch (error) {
+      console.error("[nezhno.art admin] Ошибка видимости товара:", error);
+      showToast("Не удалось изменить видимость", "error");
+      button.disabled = false;
+    }
+  };
+
+  refreshProductsButton?.addEventListener("click", async () => {
+    setButtonLoading(refreshProductsButton, true, "Обновляем…");
+    await loadProducts({ silent: true });
+    setButtonLoading(refreshProductsButton, false, "Обновляем…");
+  });
+
+  retryProductsButton?.addEventListener("click", () => loadProducts());
+  productSearch?.addEventListener("input", renderProducts);
+  visibilityFilter?.addEventListener("change", renderProducts);
+
+  // =========================================================
+  // Product form
+  // =========================================================
+
+  const clearObjectUrl = () => {
+    if (imageObjectUrl) URL.revokeObjectURL(imageObjectUrl);
+    imageObjectUrl = null;
+  };
+
+  const setPreviewImage = (src, status) => {
+    if (!imagePreview) return;
+    imagePreview.src = src || FALLBACK_IMAGE;
+    if (imageStatus) imageStatus.textContent = status;
+  };
+
+  const resetProductForm = () => {
+    clearObjectUrl();
+    productForm?.reset();
+    if (productId) productId.value = "";
+    if (productCategory) productCategory.value = "banner";
+    if (productActive) productActive.checked = true;
+    if (productSortOrder) productSortOrder.value = "0";
+    if (productImage) productImage.value = "";
+    if (descriptionCounter) descriptionCounter.textContent = "0";
+    if (selectedImageName) selectedImageName.textContent = "Изображение необязательно. Без него на сайте будет использована резервная картинка.";
+    setPreviewImage(FALLBACK_IMAGE, "Предпросмотр");
+    removeImageButton?.classList.add("hidden");
+    setFormError(productFormError, "");
+    editingProduct = null;
+    removeExistingImage = false;
+  };
+
+  const openAddProduct = () => {
+    resetProductForm();
+    if (productDialogKicker) productDialogKicker.textContent = "Новый товар";
+    if (productDialogTitle) productDialogTitle.textContent = "Добавить товар";
+    if (productSaveButton) productSaveButton.textContent = "Добавить товар";
+    openDialog(productDialog);
+    setTimeout(() => productTitle?.focus(), 0);
+  };
+
+  const openEditProduct = (product) => {
+    resetProductForm();
+    editingProduct = product;
+
+    if (productDialogKicker) productDialogKicker.textContent = "Редактирование";
+    if (productDialogTitle) productDialogTitle.textContent = product.title || "Редактировать товар";
+    if (productSaveButton) productSaveButton.textContent = "Сохранить изменения";
+
+    if (productId) productId.value = String(product.id);
+    if (productTitle) productTitle.value = product.title || "";
+    if (productCategory) productCategory.value = product.category || "banner";
+    if (productPrice) productPrice.value = product.price_from ?? "";
+    if (productDescription) productDescription.value = product.description || "";
+    if (descriptionCounter) descriptionCounter.textContent = String((product.description || "").length);
+    if (productSortOrder) productSortOrder.value = product.sort_order ?? "0";
+    if (productActive) productActive.checked = Boolean(product.is_active);
+
+    setPreviewImage(product.image_url || FALLBACK_IMAGE, product.image_url ? "Текущее изображение" : "Резервная картинка");
+
+    if (product.image_url) {
+      removeImageButton?.classList.remove("hidden");
+      if (selectedImageName) selectedImageName.textContent = "Можно оставить текущее изображение, заменить его новым или убрать.";
+    } else {
+      removeImageButton?.classList.add("hidden");
+      if (selectedImageName) selectedImageName.textContent = "У этого товара нет отдельного изображения.";
+    }
+
+    openDialog(productDialog);
+    setTimeout(() => productTitle?.focus(), 0);
+  };
+
+  const closeProductDialog = () => {
+    if (isSaving) return;
+    closeDialog(productDialog);
+    clearObjectUrl();
+  };
+
+  addProductButton?.addEventListener("click", openAddProduct);
+  emptyAddButton?.addEventListener("click", openAddProduct);
+  productDialogClose?.addEventListener("click", closeProductDialog);
+  productCancelButton?.addEventListener("click", closeProductDialog);
+
+  productDialog?.addEventListener("click", (event) => {
+    if (event.target === productDialog) closeProductDialog();
+  });
+
+  productDialog?.addEventListener("cancel", (event) => {
+    if (isSaving) event.preventDefault();
+  });
+
+  productDescription?.addEventListener("input", () => {
+    if (descriptionCounter) descriptionCounter.textContent = String(productDescription.value.length);
+  });
+
+  productImage?.addEventListener("change", () => {
+    clearObjectUrl();
+    setFormError(productFormError, "");
+
+    const file = productImage.files?.[0];
+    if (!file) {
+      if (editingProduct && !removeExistingImage) {
+        setPreviewImage(editingProduct.image_url || FALLBACK_IMAGE, editingProduct.image_url ? "Текущее изображение" : "Резервная картинка");
+      }
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      productImage.value = "";
+      setFormError(productFormError, "Выберите файл изображения.");
+      return;
+    }
+
+    if (file.size > MAX_IMAGE_SIZE) {
+      productImage.value = "";
+      setFormError(productFormError, "Файл больше 50 МБ. Выберите изображение меньшего размера.");
+      return;
+    }
+
+    removeExistingImage = false;
+    imageObjectUrl = URL.createObjectURL(file);
+    setPreviewImage(imageObjectUrl, "Новое изображение");
+    if (selectedImageName) selectedImageName.textContent = `${file.name} · ${Math.max(0.01, file.size / 1024 / 1024).toFixed(2)} МБ`;
+    removeImageButton?.classList.remove("hidden");
+  });
+
+  removeImageButton?.addEventListener("click", () => {
+    clearObjectUrl();
+    if (productImage) productImage.value = "";
+    removeExistingImage = true;
+    setPreviewImage(FALLBACK_IMAGE, "Изображение будет убрано");
+    if (selectedImageName) selectedImageName.textContent = "После сохранения товар будет использовать резервную картинку сайта.";
+    removeImageButton.classList.add("hidden");
+  });
+
+  const sanitizeFileName = (name) => {
+    const parts = String(name || "image").split(".");
+    const extension = parts.length > 1 ? parts.pop().toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+    const safeExtension = extension || "jpg";
+    return `products/${Date.now()}-${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}.${safeExtension}`;
+  };
+
+  const uploadProductImage = async (file) => {
+    if (!file) return null;
+
+    const path = sanitizeFileName(file.name);
+    const { error } = await supabaseClient.storage
+      .from(STORAGE_BUCKET)
+      .upload(path, file, {
+        cacheControl: "3600",
+        contentType: file.type || undefined,
+        upsert: false,
+      });
+
+    if (error) throw error;
+
+    const { data } = supabaseClient.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+    if (!data?.publicUrl) throw new Error("Supabase не вернул публичный URL изображения.");
+
+    return { path, publicUrl: data.publicUrl };
+  };
+
+  const getStoragePathFromPublicUrl = (url) => {
+    if (!url || typeof url !== "string") return null;
+
+    const marker = `/storage/v1/object/public/${STORAGE_BUCKET}/`;
+    const index = url.indexOf(marker);
+    if (index === -1) return null;
+
+    const encodedPath = url.slice(index + marker.length).split("?")[0];
+    if (!encodedPath) return null;
+
+    try {
+      return decodeURIComponent(encodedPath);
+    } catch (_) {
+      return encodedPath;
+    }
+  };
+
+  const removeStorageImageByUrl = async (url) => {
+    const path = getStoragePathFromPublicUrl(url);
+    if (!path) return;
+
+    const { error } = await supabaseClient.storage.from(STORAGE_BUCKET).remove([path]);
+    if (error) throw error;
+  };
+
+  const buildProductPayload = (imageUrl) => ({
+    title: productTitle.value.trim(),
+    price_from: Number(productPrice.value),
+    category: productCategory.value,
+    description: productDescription.value.trim() || null,
+    image_url: imageUrl || null,
+    is_active: Boolean(productActive.checked),
+    sort_order: Math.max(0, Number(productSortOrder.value) || 0),
+  });
+
+  productForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (isSaving) return;
+
+    setFormError(productFormError, "");
+
+    if (!productTitle.value.trim()) {
+      setFormError(productFormError, "Введите название товара.");
+      productTitle.focus();
+      return;
+    }
+
+    if (productPrice.value === "" || Number(productPrice.value) < 0) {
+      setFormError(productFormError, "Введите корректную цену.");
+      productPrice.focus();
+      return;
+    }
+
+    const file = productImage.files?.[0] || null;
+    if (file && file.size > MAX_IMAGE_SIZE) {
+      setFormError(productFormError, "Файл больше 50 МБ.");
+      return;
+    }
+
+    isSaving = true;
+    setButtonLoading(productSaveButton, true, file ? "Загружаем…" : "Сохраняем…");
+
+    let uploadedImage = null;
+
+    try {
+      const previousImageUrl = editingProduct?.image_url || null;
+      let nextImageUrl = removeExistingImage ? null : previousImageUrl;
+
+      if (file) {
+        uploadedImage = await uploadProductImage(file);
+        nextImageUrl = uploadedImage.publicUrl;
+      }
+
+      const payload = buildProductPayload(nextImageUrl);
+
+      if (editingProduct) {
+        const { data, error } = await supabaseClient
+          .from("products")
+          .update(payload)
+          .eq("id", editingProduct.id)
+          .select("id,title,price_from,category,description,image_url,is_active,sort_order")
+          .single();
+
+        if (error) throw error;
+
+        const index = products.findIndex((item) => String(item.id) === String(editingProduct.id));
+        if (index !== -1) products[index] = data;
+
+        // Delete the old storage object only after the database already points to the new state.
+        if (previousImageUrl && previousImageUrl !== nextImageUrl) {
+          try {
+            await removeStorageImageByUrl(previousImageUrl);
+          } catch (cleanupError) {
+            console.warn("[nezhno.art admin] Товар обновлён, но старое изображение не удалено:", cleanupError);
+          }
+        }
+
+        showToast("Изменения сохранены");
+      } else {
+        const { data, error } = await supabaseClient
+          .from("products")
+          .insert(payload)
+          .select("id,title,price_from,category,description,image_url,is_active,sort_order")
+          .single();
+
+        if (error) throw error;
+
+        products.push(data);
+        showToast("Товар добавлен");
+      }
+
+      products.sort((a, b) => {
+        const aOrder = Number.isFinite(Number(a.sort_order)) ? Number(a.sort_order) : Number.MAX_SAFE_INTEGER;
+        const bOrder = Number.isFinite(Number(b.sort_order)) ? Number(b.sort_order) : Number.MAX_SAFE_INTEGER;
+        return aOrder - bOrder || Number(a.id) - Number(b.id);
+      });
+
+      renderProducts();
+      closeDialog(productDialog);
+      clearObjectUrl();
+    } catch (error) {
+      console.error("[nezhno.art admin] Не удалось сохранить товар:", error);
+
+      // Avoid orphan files when upload succeeded but the database write failed.
+      if (uploadedImage?.path) {
+        try {
+          await supabaseClient.storage.from(STORAGE_BUCKET).remove([uploadedImage.path]);
+        } catch (cleanupError) {
+          console.warn("[nezhno.art admin] Не удалось убрать незакреплённый файл:", cleanupError);
+        }
+      }
+
+      setFormError(productFormError, error.message || "Не удалось сохранить товар.");
+      showToast("Не удалось сохранить товар", "error");
+    } finally {
+      isSaving = false;
+      setButtonLoading(productSaveButton, false, "Сохраняем…");
+    }
+  });
+
+  // =========================================================
+  // Delete
+  // =========================================================
+
+  const openDeleteProduct = (product) => {
+    deletingProduct = product;
+    if (deleteProductName) deleteProductName.textContent = `«${product.title || "Без названия"}»`;
+    openDialog(deleteDialog);
+  };
+
+  const closeDeleteDialog = () => {
+    if (deleteConfirmButton?.disabled) return;
+    deletingProduct = null;
+    closeDialog(deleteDialog);
+  };
+
+  deleteDialogClose?.addEventListener("click", closeDeleteDialog);
+  deleteCancelButton?.addEventListener("click", closeDeleteDialog);
+  deleteDialog?.addEventListener("click", (event) => {
+    if (event.target === deleteDialog) closeDeleteDialog();
+  });
+
+  deleteConfirmButton?.addEventListener("click", async () => {
+    if (!deletingProduct) return;
+
+    const product = deletingProduct;
+    setButtonLoading(deleteConfirmButton, true, "Удаляем…");
+
+    try {
+      // Database first: if Storage cleanup fails later, the public catalog is still correct.
+      const { error } = await supabaseClient.from("products").delete().eq("id", product.id);
+      if (error) throw error;
+
+      products = products.filter((item) => String(item.id) !== String(product.id));
+      renderProducts();
+
+      if (product.image_url) {
+        try {
+          await removeStorageImageByUrl(product.image_url);
+        } catch (cleanupError) {
+          console.warn("[nezhno.art admin] Товар удалён, но файл изображения остался в Storage:", cleanupError);
+          showToast("Товар удалён, но старый файл изображения не удалось очистить", "error");
+          closeDialog(deleteDialog);
+          deletingProduct = null;
+          return;
+        }
+      }
+
+      showToast("Товар удалён");
+      closeDialog(deleteDialog);
+      deletingProduct = null;
+    } catch (error) {
+      console.error("[nezhno.art admin] Не удалось удалить товар:", error);
+      showToast("Не удалось удалить товар", "error");
+    } finally {
+      setButtonLoading(deleteConfirmButton, false, "Удаляем…");
+    }
+  });
+
+  // =========================================================
+  // Start
+  // =========================================================
+
+  initializeAuth();
 })();
