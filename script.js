@@ -15,6 +15,23 @@
   const MAX_CHAT_IMAGE_SIZE = 50 * 1024 * 1024;
   const AUTH_REDIRECT_URL = "https://omnifisans.github.io/lina-site/";
 
+  // Элементы с .reveal теперь анимируются в обе стороны: появляются при входе
+  // в область просмотра и снова плавно скрываются, когда пользователь уходит
+  // от них. Observer создаётся ниже, но нужен и динамическим карточкам услуг.
+  let revealObserver = null;
+  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const registerRevealItem = (item) => {
+    if (!item?.classList?.contains("reveal")) return;
+
+    if (!("IntersectionObserver" in window) || prefersReducedMotion) {
+      item.classList.add("visible");
+      return;
+    }
+
+    revealObserver?.observe(item);
+  };
+
   if (!window.supabase?.createClient) {
     console.error("[nezhno.art] Supabase JS не загрузился.");
     return;
@@ -71,7 +88,7 @@
     };
 
     const article = document.createElement("article");
-    article.className = "service-card reveal visible";
+    article.className = "service-card reveal";
     article.dataset.productId = String(product.id);
 
     const preview = document.createElement("div");
@@ -150,6 +167,7 @@
 
       const cards = products.map(createServiceCard);
       serviceGrid.replaceChildren(...cards);
+      cards.forEach(registerRevealItem);
       console.log(`[nezhno.art] Каталог обновлён из Supabase: ${products.length} поз.`);
     } catch (error) {
       console.error("[nezhno.art] Не удалось загрузить каталог из Supabase:", error);
@@ -228,19 +246,19 @@
   // Reveal on scroll
   // -------------------------
   const revealItems = document.querySelectorAll(".reveal");
-  if ("IntersectionObserver" in window && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    const observer = new IntersectionObserver(
-      (entries, obs) => {
+  if ("IntersectionObserver" in window && !prefersReducedMotion) {
+    revealObserver = new IntersectionObserver(
+      (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("visible");
-            obs.unobserve(entry.target);
-          }
+          // В отличие от прежней версии, элемент больше не перестаёт
+          // отслеживаться после первого появления. Поэтому при выходе из
+          // viewport класс снимается, а CSS проигрывает анимацию обратно.
+          entry.target.classList.toggle("visible", entry.isIntersecting);
         });
       },
-      { threshold: 0.12, rootMargin: "0px 0px -40px" }
+      { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
     );
-    revealItems.forEach((item) => observer.observe(item));
+    revealItems.forEach(registerRevealItem);
   } else {
     revealItems.forEach((item) => item.classList.add("visible"));
   }
