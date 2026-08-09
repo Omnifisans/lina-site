@@ -37,7 +37,7 @@
       <div class="admin-login-copy">
         <span class="admin-kicker">Только для администратора</span>
         <h1 id="login-title">Вход</h1>
-        <p>Войдите в аккаунт Лины, чтобы управлять товарами на сайте.</p>
+        <p>Войдите в аккаунт Лины, чтобы управлять товарами и сообщениями на сайте.</p>
       </div>
 
       <form class="admin-form" id="login-form">
@@ -97,6 +97,17 @@
     </header>
 
     <main class="admin-main" id="admin-main">
+      <nav class="admin-view-tabs" aria-label="Разделы панели управления">
+        <button class="admin-view-tab active" id="products-tab" type="button" data-admin-view="products" aria-selected="true">
+          <span aria-hidden="true">▦</span> Товары
+        </button>
+        <button class="admin-view-tab" id="messages-tab" type="button" data-admin-view="messages" aria-selected="false">
+          <span aria-hidden="true">✉</span> Сообщения
+          <i class="admin-tab-badge hidden" id="messages-badge">0</i>
+        </button>
+      </nav>
+
+      <div id="admin-products-view">
       <section class="admin-hero">
         <div class="admin-hero-copy">
           <span class="admin-kicker">Каталог nezhno.art</span>
@@ -198,6 +209,75 @@
         </div>
 
         <div class="admin-products-grid" id="products-grid" aria-live="polite"></div>
+      </section>
+      </div>
+
+      <section class="admin-messages-view hidden" id="admin-messages-view" aria-labelledby="messages-title">
+        <div class="admin-messages-heading">
+          <div>
+            <span class="admin-kicker">Личный чат</span>
+            <h1 id="messages-title">Сообщения</h1>
+            <p>Все переписки пользователей с nezhno.art. Новые сообщения появляются без перезагрузки страницы.</p>
+          </div>
+          <button class="button button-secondary" id="refresh-conversations-button" type="button">
+            <span aria-hidden="true">↻</span> Обновить
+          </button>
+        </div>
+
+        <div class="admin-inbox">
+          <aside class="admin-conversations" aria-label="Диалоги пользователей">
+            <label class="admin-search admin-conversation-search">
+              <span class="sr-only">Поиск по диалогам</span>
+              <span aria-hidden="true">⌕</span>
+              <input id="conversation-search" type="search" placeholder="Имя или email…" autocomplete="off" />
+            </label>
+
+            <div class="admin-status-card admin-conversations-loading" id="conversations-loading">
+              <span class="admin-loader" aria-hidden="true"></span>
+              <div><strong>Загружаем диалоги…</strong><p>Получаем сообщения из Supabase.</p></div>
+            </div>
+
+            <div class="admin-empty admin-conversations-empty hidden" id="conversations-empty">
+              <span class="admin-empty-icon" aria-hidden="true">✉</span>
+              <h3>Сообщений пока нет</h3>
+              <p>Когда кто-нибудь откроет личный чат, диалог появится здесь.</p>
+            </div>
+
+            <div class="admin-conversation-list" id="conversation-list" aria-live="polite"></div>
+          </aside>
+
+          <section class="admin-chat" id="admin-chat" aria-label="Открытый диалог">
+            <div class="admin-chat-placeholder" id="admin-chat-placeholder">
+              <span aria-hidden="true">♡</span>
+              <h2>Выберите диалог</h2>
+              <p>Слева появятся пользователи, которые написали через сайт.</p>
+            </div>
+
+            <div class="admin-chat-active hidden" id="admin-chat-active">
+              <header class="admin-chat-header">
+                <div>
+                  <strong id="admin-chat-name">Пользователь</strong>
+                  <small id="admin-chat-email"></small>
+                </div>
+                <span class="admin-chat-live"><i aria-hidden="true"></i> realtime</span>
+              </header>
+
+              <div class="admin-chat-messages" id="admin-chat-messages" aria-live="polite"></div>
+
+              <div class="admin-chat-attachment-preview hidden" id="admin-chat-attachment-preview"></div>
+
+              <form class="admin-chat-form" id="admin-chat-form">
+                <label class="admin-chat-attach" for="admin-chat-file" title="Прикрепить изображение">
+                  <span aria-hidden="true">＋</span>
+                  <span class="sr-only">Прикрепить изображение</span>
+                </label>
+                <input class="sr-only" id="admin-chat-file" type="file" accept="image/*" />
+                <textarea id="admin-chat-input" rows="2" maxlength="4000" placeholder="Ответить пользователю…"></textarea>
+                <button class="admin-chat-send" id="admin-chat-send" type="submit" aria-label="Отправить ответ">➤</button>
+              </form>
+            </div>
+          </section>
+        </div>
       </section>
     </main>
   </div>

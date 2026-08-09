@@ -10,6 +10,35 @@
   // -------------------------
   const SUPABASE_URL = "https://dalipumytxktfrtqhxxm.supabase.co";
   const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_re7xSQ02x55-CTUDSbIpYQ_1qX8tRqN";
+  const LINA_USER_ID = "984948c4-d839-4cc7-9635-8868c7ddc6a7";
+  const CHAT_BUCKET = "chat-attachments";
+  const MAX_CHAT_IMAGE_SIZE = 50 * 1024 * 1024;
+
+  if (!window.supabase?.createClient) {
+    console.error("[nezhno.art] Supabase JS не загрузился.");
+    return;
+  }
+
+  // Отдельное хранилище сессии для клиентской части сайта. Так тестовый
+  // пользователь не перетирает сессию админки в том же браузере.
+  const userAuthStorage = {
+    getItem: (key) => localStorage.getItem(`nezhno-user-${key}`),
+    setItem: (key, value) => localStorage.setItem(`nezhno-user-${key}`, value),
+    removeItem: (key) => localStorage.removeItem(`nezhno-user-${key}`),
+  };
+
+  const supabaseClient = window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_PUBLISHABLE_KEY,
+    {
+      auth: {
+        storage: userAuthStorage,
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    }
+  );
 
   const serviceGrid = document.getElementById("service-grid");
 
@@ -300,14 +329,53 @@
   }, { passive: true });
 
   // -------------------------
-  // Demo chat
+  // Auth + real chat
   // -------------------------
+  const accountButton = document.getElementById("account-button");
+  const accountButtonLabel = document.getElementById("account-button-label");
+
+  const authDialog = document.getElementById("auth-dialog");
+  const authClose = document.getElementById("auth-close");
+  const authViews = document.querySelectorAll("[data-auth-view]");
+  const authSwitchers = document.querySelectorAll("[data-auth-switch]");
+  const authSuccessText = document.getElementById("auth-success-text");
+
+  const loginForm = document.getElementById("login-form");
+  const loginEmail = document.getElementById("login-email");
+  const loginPassword = document.getElementById("login-password");
+  const loginError = document.getElementById("login-error");
+  const loginSubmit = document.getElementById("login-submit");
+
+  const registerForm = document.getElementById("register-form");
+  const registerName = document.getElementById("register-name");
+  const registerEmail = document.getElementById("register-email");
+  const registerPassword = document.getElementById("register-password");
+  const registerPasswordRepeat = document.getElementById("register-password-repeat");
+  const registerError = document.getElementById("register-error");
+  const registerSubmit = document.getElementById("register-submit");
+
+  const recoverForm = document.getElementById("recover-form");
+  const recoverEmail = document.getElementById("recover-email");
+  const recoverError = document.getElementById("recover-error");
+  const recoverSubmit = document.getElementById("recover-submit");
+
+  const passwordForm = document.getElementById("password-form");
+  const newPassword = document.getElementById("new-password");
+  const newPasswordRepeat = document.getElementById("new-password-repeat");
+  const passwordError = document.getElementById("password-error");
+  const passwordSubmit = document.getElementById("password-submit");
+
   const chatPanel = document.getElementById("chat-panel");
   const chatBackdrop = document.getElementById("chat-backdrop");
   const chatClose = document.getElementById("chat-close");
   const chatForm = document.getElementById("chat-form");
   const chatInput = document.getElementById("chat-input");
+  const chatSend = document.getElementById("chat-send");
   const chatMessages = document.getElementById("chat-messages");
+  const chatStatusText = document.getElementById("chat-status-text");
+  const chatAccountName = document.getElementById("chat-account-name");
+  const chatAccountEmail = document.getElementById("chat-account-email");
+  const chatLogout = document.getElementById("chat-logout");
   const chatPresetButtons = document.querySelectorAll("[data-chat-preset]");
   const copyChatButton = document.getElementById("copy-chat");
   const openTelegramButton = document.getElementById("open-telegram");
@@ -319,102 +387,98 @@
   const chatFiles = document.getElementById("chat-files");
   const attachmentPreview = document.getElementById("chat-attachment-preview");
 
-  const chatStorageKey = "nezhno-demo-chat";
-  const chatHistory = [];
+  let currentUser = null;
+  let currentProfile = null;
+  let currentConversation = null;
+  let currentMessages = [];
+  let chatChannel = null;
   let pendingAttachments = [];
+  let pendingService = "";
+  let isSendingMessage = false;
+  const renderedMessageIds = new Set();
 
-  const saveChat = () => {
-    try {
-      localStorage.setItem(chatStorageKey, JSON.stringify(chatHistory.slice(-20)));
-    } catch (_) {
-      // localStorage может быть недоступен в некоторых приватных режимах.
+  const setInlineError = (element, message = "") => {
+    if (!element) return;
+    element.textContent = message;
+    element.classList.toggle("visible", Boolean(message));
+  };
+
+  const setLoadingButton = (button, loading, loadingText) => {
+    if (!button) return;
+    if (loading) {
+      button.dataset.originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = loadingText;
+    } else {
+      button.disabled = false;
+      button.textContent = button.dataset.originalText || button.textContent;
+      delete button.dataset.originalText;
     }
   };
 
-  const appendMessage = (text, type = "user", save = true, attachments = []) => {
-    const cleanText = text?.trim() || "";
-    if ((!cleanText && !attachments.length) || !chatMessages) return;
-    const wrap = document.createElement("div");
-    wrap.className = `message message-${type}`;
-
-    if (type === "seller") {
-      const author = document.createElement("div");
-      author.className = "message-author";
-      author.textContent = "nezhno.art";
-      wrap.appendChild(author);
-    }
-
-    if (cleanText) {
-      const paragraph = document.createElement("p");
-      paragraph.textContent = cleanText;
-      wrap.appendChild(paragraph);
-    }
-
-    if (attachments.length) {
-      const gallery = document.createElement("div");
-      gallery.className = "message-attachments";
-      attachments.forEach((item) => {
-        const image = document.createElement("img");
-        image.src = item.url;
-        image.alt = `Прикреплённый референс: ${item.file.name}`;
-        gallery.appendChild(image);
-      });
-      wrap.appendChild(gallery);
-    }
-
-    chatMessages.appendChild(wrap);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-
-    if (save) {
-      const names = attachments.map((item) => item.file.name);
-      const storedText = [cleanText, names.length ? `[Референсы: ${names.join(", ")}]` : ""].filter(Boolean).join("\n");
-      chatHistory.push({ text: storedText, type });
-      saveChat();
-    }
+  const showAuthView = (name) => {
+    authViews.forEach((view) => {
+      view.hidden = view.dataset.authView !== name;
+    });
+    [loginError, registerError, recoverError, passwordError].forEach((item) => setInlineError(item, ""));
   };
 
-  const restoreChat = () => {
-    try {
-      const stored = JSON.parse(localStorage.getItem(chatStorageKey) || "[]");
-      if (!Array.isArray(stored)) return;
-      stored.slice(-20).forEach((item) => {
-        if (!item?.text || !["user", "seller", "system"].includes(item.type)) return;
-        chatHistory.push(item);
-        appendMessage(item.text, item.type, false);
-      });
-    } catch (_) {
-      // Игнорируем повреждённое демо-хранилище.
-    }
+  const openAuth = (view = "login") => {
+    showAuthView(view);
+    if (typeof authDialog?.showModal === "function") authDialog.showModal();
+    else authDialog?.setAttribute("open", "");
+    window.setTimeout(() => {
+      const target = authDialog?.querySelector('[data-auth-view]:not([hidden]) input');
+      target?.focus();
+    }, 80);
   };
 
-  restoreChat();
-
-  const serviceToBriefValue = (service) => {
-    const normalized = service.toLowerCase();
-    if (normalized.includes("баннер")) return "banner";
-    if (normalized.includes("стикер")) return "stickers";
-    if (normalized.includes("модел")) return "model";
-    return "general";
+  const closeAuth = () => {
+    if (authDialog?.open && typeof authDialog.close === "function") authDialog.close();
+    else authDialog?.removeAttribute("open");
   };
 
-  const openChat = (service = "") => {
-    chatPanel?.classList.add("open");
-    chatPanel?.setAttribute("aria-hidden", "false");
-    if (chatBackdrop) chatBackdrop.hidden = false;
-    body.classList.add("no-scroll");
+  authClose?.addEventListener("click", closeAuth);
+  authDialog?.addEventListener("click", (event) => {
+    if (event.target === authDialog) closeAuth();
+  });
+  authSwitchers.forEach((button) => {
+    button.addEventListener("click", () => showAuthView(button.dataset.authSwitch || "login"));
+  });
 
-    if (service && service !== "Новый заказ" && service !== "Общий вопрос") {
-      chatInput.value = `Здравствуйте! Хочу обсудить: ${service}. `;
-      if (briefService) {
-        briefService.value = serviceToBriefValue(service);
-        renderBriefFields();
-      }
-    } else if (service === "Общий вопрос") {
-      chatInput.value = "Здравствуйте! У меня вопрос: ";
+  const getDisplayName = () =>
+    currentProfile?.display_name?.trim() || currentUser?.user_metadata?.display_name?.trim() || currentUser?.email?.split("@")[0] || "Пользователь";
+
+  const updateAuthUi = () => {
+    const signedIn = Boolean(currentUser);
+    if (accountButtonLabel) accountButtonLabel.textContent = signedIn ? getDisplayName() : "Войти";
+    accountButton?.setAttribute("aria-label", signedIn ? "Открыть личный чат" : "Войти в аккаунт");
+    if (chatAccountName) chatAccountName.textContent = getDisplayName();
+    if (chatAccountEmail) chatAccountEmail.textContent = currentUser?.email || "";
+    if (chatStatusText) chatStatusText.textContent = signedIn ? "Личная переписка" : "Требуется вход";
+  };
+
+  const loadOwnProfile = async () => {
+    currentProfile = null;
+    if (!currentUser) return;
+    const { data, error } = await supabaseClient
+      .from("profiles")
+      .select("id,display_name,email")
+      .eq("id", currentUser.id)
+      .maybeSingle();
+    if (error) console.warn("[nezhno.art] Не удалось загрузить профиль:", error);
+    currentProfile = data || null;
+    updateAuthUi();
+  };
+
+  const resetChatState = async () => {
+    currentConversation = null;
+    currentMessages = [];
+    renderedMessageIds.clear();
+    if (chatChannel) {
+      try { await supabaseClient.removeChannel(chatChannel); } catch (_) { /* noop */ }
+      chatChannel = null;
     }
-
-    autoGrowChatInput();
-    setTimeout(() => chatInput?.focus(), 120);
   };
 
   const closeChat = () => {
@@ -424,17 +488,410 @@
     body.classList.remove("no-scroll");
   };
 
-  // Делегирование кликов нужно и для карточек, которые приходят из Supabase после загрузки страницы.
+  const signOutUser = async () => {
+    closeChat();
+    await resetChatState();
+    const { error } = await supabaseClient.auth.signOut();
+    if (error) showToast("Не удалось выйти из аккаунта");
+  };
+
+  chatLogout?.addEventListener("click", signOutUser);
+
+  accountButton?.addEventListener("click", () => {
+    if (currentUser) openChat("");
+    else openAuth("login");
+  });
+
+  loginForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setInlineError(loginError, "");
+    const email = loginEmail?.value.trim() || "";
+    const password = loginPassword?.value || "";
+    if (!email || !password) {
+      setInlineError(loginError, "Введите email и пароль.");
+      return;
+    }
+    setLoadingButton(loginSubmit, true, "Входим…");
+    try {
+      const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+      if (error || !data?.user) throw error || new Error("Не удалось войти");
+      currentUser = data.user;
+      await loadOwnProfile();
+      if (loginPassword) loginPassword.value = "";
+      closeAuth();
+      showToast("Вы вошли в аккаунт");
+      if (pendingService) {
+        const service = pendingService;
+        pendingService = "";
+        await openChat(service);
+      }
+    } catch (error) {
+      console.warn("[nezhno.art] Ошибка входа:", error);
+      const message = /confirm/i.test(error?.message || "")
+        ? "Сначала подтвердите email по ссылке из письма."
+        : "Не удалось войти. Проверьте email и пароль.";
+      setInlineError(loginError, message);
+    } finally {
+      setLoadingButton(loginSubmit, false, "Входим…");
+    }
+  });
+
+  registerForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setInlineError(registerError, "");
+    const displayName = registerName?.value.trim() || "";
+    const email = registerEmail?.value.trim() || "";
+    const password = registerPassword?.value || "";
+    const repeat = registerPasswordRepeat?.value || "";
+
+    if (!displayName || !email || !password || !repeat) {
+      setInlineError(registerError, "Заполните все поля.");
+      return;
+    }
+    if (password.length < 8) {
+      setInlineError(registerError, "Пароль должен содержать минимум 8 символов.");
+      return;
+    }
+    if (password !== repeat) {
+      setInlineError(registerError, "Пароли не совпадают.");
+      return;
+    }
+
+    setLoadingButton(registerSubmit, true, "Создаём…");
+    try {
+      const { data, error } = await supabaseClient.auth.signUp({
+        email,
+        password,
+        options: { data: { display_name: displayName } },
+      });
+      if (error) throw error;
+
+      if (data?.session && data?.user) {
+        currentUser = data.user;
+        await loadOwnProfile();
+        closeAuth();
+        showToast("Аккаунт создан");
+        if (pendingService) {
+          const service = pendingService;
+          pendingService = "";
+          await openChat(service);
+        }
+        return;
+      }
+
+      if (authSuccessText) authSuccessText.textContent = `Письмо с подтверждением отправлено на ${email}. После подтверждения вернитесь на сайт.`;
+      showAuthView("success");
+      registerForm.reset();
+    } catch (error) {
+      console.warn("[nezhno.art] Ошибка регистрации:", error);
+      setInlineError(registerError, "Не удалось создать аккаунт. Проверьте email и данные формы.");
+    } finally {
+      setLoadingButton(registerSubmit, false, "Создаём…");
+    }
+  });
+
+  recoverForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setInlineError(recoverError, "");
+    const email = recoverEmail?.value.trim() || "";
+    if (!email) {
+      setInlineError(recoverError, "Введите email.");
+      return;
+    }
+    setLoadingButton(recoverSubmit, true, "Отправляем…");
+    try {
+      const { error } = await supabaseClient.auth.resetPasswordForEmail(email);
+      if (error) throw error;
+      if (authSuccessText) authSuccessText.textContent = `Если аккаунт с адресом ${email} существует, на него отправлено письмо для смены пароля.`;
+      showAuthView("success");
+    } catch (error) {
+      console.warn("[nezhno.art] Ошибка восстановления пароля:", error);
+      setInlineError(recoverError, "Не удалось отправить письмо. Попробуйте позже.");
+    } finally {
+      setLoadingButton(recoverSubmit, false, "Отправляем…");
+    }
+  });
+
+  passwordForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setInlineError(passwordError, "");
+    const password = newPassword?.value || "";
+    const repeat = newPasswordRepeat?.value || "";
+    if (password.length < 8) {
+      setInlineError(passwordError, "Пароль должен содержать минимум 8 символов.");
+      return;
+    }
+    if (password !== repeat) {
+      setInlineError(passwordError, "Пароли не совпадают.");
+      return;
+    }
+    setLoadingButton(passwordSubmit, true, "Сохраняем…");
+    try {
+      const { error } = await supabaseClient.auth.updateUser({ password });
+      if (error) throw error;
+      passwordForm.reset();
+      closeAuth();
+      showToast("Пароль обновлён");
+    } catch (error) {
+      console.warn("[nezhno.art] Ошибка смены пароля:", error);
+      setInlineError(passwordError, error?.message || "Не удалось изменить пароль.");
+    } finally {
+      setLoadingButton(passwordSubmit, false, "Сохраняем…");
+    }
+  });
+
+  const ensureConversation = async () => {
+    if (!currentUser) throw new Error("AUTH_REQUIRED");
+    if (currentConversation?.user_id === currentUser.id) return currentConversation;
+
+    let { data, error } = await supabaseClient
+      .from("conversations")
+      .select("id,user_id,created_at,updated_at")
+      .eq("user_id", currentUser.id)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) {
+      const created = await supabaseClient
+        .from("conversations")
+        .insert({ user_id: currentUser.id })
+        .select("id,user_id,created_at,updated_at")
+        .single();
+
+      if (created.error) {
+        // Если две вкладки одновременно создали один диалог, UNIQUE защитит базу.
+        const retry = await supabaseClient
+          .from("conversations")
+          .select("id,user_id,created_at,updated_at")
+          .eq("user_id", currentUser.id)
+          .maybeSingle();
+        if (retry.error || !retry.data) throw created.error;
+        data = retry.data;
+      } else {
+        data = created.data;
+      }
+    }
+
+    currentConversation = data;
+    return data;
+  };
+
+  const renderChatIntro = () => {
+    if (!chatMessages) return;
+    chatMessages.innerHTML = "";
+    const intro = document.createElement("div");
+    intro.className = "message message-seller message-intro";
+    intro.innerHTML = '<div class="message-author">nezhno.art</div><p>Привет! Расскажите, что хотите заказать. Можно начать с пары предложений, а детали уточним дальше ♡</p>';
+    chatMessages.appendChild(intro);
+  };
+
+  const renderChatState = (title, text = "") => {
+    if (!chatMessages) return;
+    renderChatIntro();
+    const state = document.createElement("div");
+    state.className = "chat-state";
+    const strong = document.createElement("strong");
+    strong.textContent = title;
+    state.appendChild(strong);
+    if (text) {
+      const p = document.createElement("p");
+      p.textContent = text;
+      state.appendChild(p);
+    }
+    chatMessages.appendChild(state);
+  };
+
+  const createSignedAttachmentUrl = async (path) => {
+    if (!path) return null;
+    const { data, error } = await supabaseClient.storage.from(CHAT_BUCKET).createSignedUrl(path, 60 * 60);
+    if (error) {
+      console.warn("[nezhno.art] Не удалось создать ссылку на вложение:", error);
+      return null;
+    }
+    return data?.signedUrl || null;
+  };
+
+  const appendRemoteMessage = async (message, { scroll = true } = {}) => {
+    if (!message || renderedMessageIds.has(String(message.id)) || !chatMessages) return;
+    renderedMessageIds.add(String(message.id));
+    chatMessages.querySelector(".chat-state-small")?.remove();
+
+    const type = message.sender_id === LINA_USER_ID ? "seller" : "user";
+    const wrap = document.createElement("div");
+    wrap.className = `message message-${type}`;
+    wrap.dataset.messageId = String(message.id);
+
+    if (type === "seller") {
+      const author = document.createElement("div");
+      author.className = "message-author";
+      author.textContent = "nezhno.art";
+      wrap.appendChild(author);
+    }
+
+    if (message.body) {
+      const paragraph = document.createElement("p");
+      paragraph.textContent = message.body;
+      wrap.appendChild(paragraph);
+    }
+
+    if (message.attachment_path) {
+      const signedUrl = await createSignedAttachmentUrl(message.attachment_path);
+      if (signedUrl) {
+        const gallery = document.createElement("div");
+        gallery.className = "message-attachments";
+        const link = document.createElement("a");
+        link.href = signedUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        const image = document.createElement("img");
+        image.src = signedUrl;
+        image.alt = message.attachment_name ? `Вложение: ${message.attachment_name}` : "Прикреплённое изображение";
+        image.loading = "lazy";
+        link.appendChild(image);
+        gallery.appendChild(link);
+        wrap.appendChild(gallery);
+      } else {
+        const error = document.createElement("small");
+        error.className = "message-file-error";
+        error.textContent = message.attachment_name ? `Не удалось открыть ${message.attachment_name}` : "Не удалось открыть вложение";
+        wrap.appendChild(error);
+      }
+    }
+
+    const time = document.createElement("time");
+    time.className = "message-time";
+    time.dateTime = message.created_at || "";
+    time.textContent = message.created_at
+      ? new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" }).format(new Date(message.created_at))
+      : "";
+    wrap.appendChild(time);
+
+    chatMessages.appendChild(wrap);
+    if (scroll) chatMessages.scrollTop = chatMessages.scrollHeight;
+  };
+
+  const loadMessages = async () => {
+    const conversation = await ensureConversation();
+    renderChatState("Загружаем переписку…");
+    renderedMessageIds.clear();
+
+    const { data, error } = await supabaseClient
+      .from("messages")
+      .select("id,conversation_id,sender_id,body,attachment_path,attachment_name,attachment_mime,created_at")
+      .eq("conversation_id", conversation.id)
+      .order("created_at", { ascending: true });
+
+    if (error) throw error;
+    currentMessages = Array.isArray(data) ? data : [];
+    renderChatIntro();
+    for (const message of currentMessages) await appendRemoteMessage(message, { scroll: false });
+    if (currentMessages.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "chat-state chat-state-small";
+      empty.textContent = "История пока пустая. Напишите первое сообщение ♡";
+      chatMessages.appendChild(empty);
+    }
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  };
+
+  const subscribeToConversation = async () => {
+    if (!currentConversation) return;
+    if (chatChannel) {
+      try { await supabaseClient.removeChannel(chatChannel); } catch (_) { /* noop */ }
+    }
+
+    const conversationId = currentConversation.id;
+    chatChannel = supabaseClient
+      .channel(`chat-${conversationId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const message = payload.new;
+          if (!message || String(message.conversation_id) !== String(conversationId)) return;
+          if (!currentMessages.some((item) => String(item.id) === String(message.id))) currentMessages.push(message);
+          window.setTimeout(() => appendRemoteMessage(message), 0);
+        }
+      )
+      .subscribe((status) => {
+        if (chatStatusText) {
+          chatStatusText.textContent = status === "SUBSCRIBED" ? "На связи" : "Личная переписка";
+        }
+      });
+  };
+
+  const serviceToBriefValue = (service) => {
+    const normalized = String(service || "").toLowerCase();
+    if (normalized.includes("баннер")) return "banner";
+    if (normalized.includes("стикер")) return "stickers";
+    if (normalized.includes("модел")) return "model";
+    return "general";
+  };
+
+  const applyServicePreset = (service) => {
+    if (!chatInput || !service) return;
+    if (service !== "Новый заказ" && service !== "Общий вопрос") {
+      if (!chatInput.value.trim()) chatInput.value = `Здравствуйте! Хочу обсудить: ${service}. `;
+      if (briefService) {
+        briefService.value = serviceToBriefValue(service);
+        renderBriefFields();
+      }
+    } else if (service === "Общий вопрос" && !chatInput.value.trim()) {
+      chatInput.value = "Здравствуйте! У меня вопрос: ";
+    }
+    autoGrowChatInput();
+  };
+
+  async function openChat(service = "") {
+    if (!currentUser) {
+      pendingService = service || pendingService;
+      openAuth("login");
+      return;
+    }
+
+    chatPanel?.classList.add("open");
+    chatPanel?.setAttribute("aria-hidden", "false");
+    if (chatBackdrop) chatBackdrop.hidden = false;
+    body.classList.add("no-scroll");
+    applyServicePreset(service);
+
+    try {
+      if (chatStatusText) chatStatusText.textContent = "Подключаемся…";
+      await ensureConversation();
+      await loadMessages();
+      await subscribeToConversation();
+      if (chatStatusText) chatStatusText.textContent = "На связи";
+      window.setTimeout(() => chatInput?.focus(), 100);
+    } catch (error) {
+      console.error("[nezhno.art] Не удалось открыть чат:", error);
+      renderChatState("Не удалось загрузить чат", "Проверьте интернет и попробуйте закрыть и открыть чат снова.");
+      if (chatStatusText) chatStatusText.textContent = "Ошибка соединения";
+    }
+  }
+
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-open-chat]");
     if (!button) return;
     openChat(button.dataset.service || "");
   });
+
   chatClose?.addEventListener("click", closeChat);
   chatBackdrop?.addEventListener("click", closeChat);
 
+  const autoGrowChatInput = () => {
+    if (!chatInput) return;
+    chatInput.style.height = "auto";
+    chatInput.style.height = `${Math.min(chatInput.scrollHeight, 140)}px`;
+  };
+
   chatPresetButtons.forEach((button) => {
     button.addEventListener("click", () => {
+      if (!chatInput) return;
       chatInput.value = `${button.dataset.chatPreset}. `;
       if (briefService && button.dataset.briefService) {
         briefService.value = button.dataset.briefService;
@@ -446,28 +903,20 @@
     });
   });
 
-  const autoGrowChatInput = () => {
-    if (!chatInput) return;
-    chatInput.style.height = "auto";
-    chatInput.style.height = `${Math.min(chatInput.scrollHeight, 140)}px`;
-  };
-
   const briefTemplates = {
-    general: [
-      { name: "idea", label: "Что нужно?", placeholder: "Например, оформление профиля" }
-    ],
+    general: [{ name: "idea", label: "Что нужно?", placeholder: "Например, оформление профиля" }],
     banner: [
       { name: "platform", label: "Где будет использоваться?", placeholder: "Telegram, VK, YouTube…" },
-      { name: "size", label: "Размер / формат, если известен", placeholder: "Например, 1590 × 400" }
+      { name: "size", label: "Размер / формат, если известен", placeholder: "Например, 1590 × 400" },
     ],
     stickers: [
       { name: "count", label: "Примерное количество стикеров", placeholder: "Например, 8", type: "number", min: "1" },
-      { name: "character", label: "Персонаж / тема", placeholder: "Кого или что рисуем?" }
+      { name: "character", label: "Персонаж / тема", placeholder: "Кого или что рисуем?" },
     ],
     model: [
       { name: "parts", label: "Примерное количество деталей", placeholder: "Например, 150", type: "number", min: "1" },
-      { name: "character", label: "Персонаж / задача", placeholder: "Коротко опишите модель" }
-    ]
+      { name: "character", label: "Персонаж / задача", placeholder: "Коротко опишите модель" },
+    ],
   };
 
   const renderBriefFields = () => {
@@ -490,25 +939,6 @@
 
   renderBriefFields();
   briefService?.addEventListener("change", renderBriefFields);
-
-  briefForm?.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const formData = new FormData(briefForm);
-    const serviceNames = { general: "Другое / пока не знаю", banner: "Баннер", stickers: "Стикеры", model: "Модель" };
-    const lines = [`Быстрый бриф: ${serviceNames[briefService?.value] || "Заказ"}`];
-    briefFields?.querySelectorAll("label").forEach((label) => {
-      const caption = label.querySelector("span")?.textContent;
-      const value = label.querySelector("input")?.value.trim();
-      if (caption && value) lines.push(`${caption}: ${value}`);
-    });
-    if (lines.length === 1) {
-      showToast("Заполните хотя бы одно поле брифа");
-      return;
-    }
-    appendMessage(lines.join("\n"), "user");
-    showToast("Бриф добавлен в демо-чат");
-    if (briefDetails) briefDetails.open = false;
-  });
 
   const renderAttachmentPreview = () => {
     if (!attachmentPreview) return;
@@ -538,15 +968,112 @@
     const files = Array.from(chatFiles.files || []).filter((file) => file.type.startsWith("image/"));
     const availableSlots = Math.max(0, 4 - pendingAttachments.length);
     files.slice(0, availableSlots).forEach((file) => {
-      if (file.size > 8 * 1024 * 1024) {
-        showToast(`${file.name}: файл больше 8 МБ`);
+      if (file.size > MAX_CHAT_IMAGE_SIZE) {
+        showToast(`${file.name}: файл больше 50 МБ`);
         return;
       }
       pendingAttachments.push({ file, url: URL.createObjectURL(file) });
     });
-    if (files.length > availableSlots) showToast("В демо можно прикрепить до 4 изображений");
+    if (files.length > availableSlots) showToast("Можно прикрепить до 4 изображений за раз");
     chatFiles.value = "";
     renderAttachmentPreview();
+  });
+
+  const makeStoragePath = (ownerId, file) => {
+    const cleanName = file.name
+      .normalize("NFKD")
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "image";
+    const unique = typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    return `${ownerId}/${Date.now()}-${unique}-${cleanName}`;
+  };
+
+  const sendOutgoingMessage = async (text, attachments = []) => {
+    const cleanText = String(text || "").trim();
+    if ((!cleanText && attachments.length === 0) || !currentUser || isSendingMessage) return;
+    isSendingMessage = true;
+    if (chatSend) chatSend.disabled = true;
+
+    const uploaded = [];
+    try {
+      const conversation = await ensureConversation();
+
+      for (const item of attachments) {
+        const path = makeStoragePath(currentUser.id, item.file);
+        const { error } = await supabaseClient.storage.from(CHAT_BUCKET).upload(path, item.file, {
+          contentType: item.file.type || "image/*",
+          upsert: false,
+        });
+        if (error) throw error;
+        uploaded.push({
+          path,
+          name: item.file.name,
+          mime: item.file.type || "image/*",
+        });
+      }
+
+      const payloads = uploaded.length
+        ? uploaded.map((file, index) => ({
+            conversation_id: conversation.id,
+            sender_id: currentUser.id,
+            body: index === 0 && cleanText ? cleanText : null,
+            attachment_path: file.path,
+            attachment_name: file.name,
+            attachment_mime: file.mime,
+          }))
+        : [{
+            conversation_id: conversation.id,
+            sender_id: currentUser.id,
+            body: cleanText,
+            attachment_path: null,
+            attachment_name: null,
+            attachment_mime: null,
+          }];
+
+      const { data, error } = await supabaseClient
+        .from("messages")
+        .insert(payloads)
+        .select("id,conversation_id,sender_id,body,attachment_path,attachment_name,attachment_mime,created_at");
+      if (error) throw error;
+
+      for (const message of data || []) {
+        if (!currentMessages.some((item) => String(item.id) === String(message.id))) currentMessages.push(message);
+        await appendRemoteMessage(message);
+      }
+      return true;
+    } catch (error) {
+      console.error("[nezhno.art] Не удалось отправить сообщение:", error);
+      if (uploaded.length) {
+        try { await supabaseClient.storage.from(CHAT_BUCKET).remove(uploaded.map((item) => item.path)); } catch (_) { /* noop */ }
+      }
+      showToast("Не удалось отправить сообщение");
+      return false;
+    } finally {
+      isSendingMessage = false;
+      if (chatSend) chatSend.disabled = false;
+    }
+  };
+
+  briefForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const serviceNames = { general: "Другое / пока не знаю", banner: "Баннер", stickers: "Стикеры", model: "Модель" };
+    const lines = [`Быстрый бриф: ${serviceNames[briefService?.value] || "Заказ"}`];
+    briefFields?.querySelectorAll("label").forEach((label) => {
+      const caption = label.querySelector("span")?.textContent;
+      const value = label.querySelector("input")?.value.trim();
+      if (caption && value) lines.push(`${caption}: ${value}`);
+    });
+    if (lines.length === 1) {
+      showToast("Заполните хотя бы одно поле брифа");
+      return;
+    }
+    const sent = await sendOutgoingMessage(lines.join("\n"));
+    if (sent) {
+      briefForm.reset();
+      if (briefService) briefService.value = "general";
+      renderBriefFields();
+      if (briefDetails) briefDetails.open = false;
+    }
   });
 
   chatInput?.addEventListener("input", autoGrowChatInput);
@@ -557,32 +1084,29 @@
     }
   });
 
-  chatForm?.addEventListener("submit", (event) => {
+  chatForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const text = chatInput?.value.trim() || "";
     if (!text && pendingAttachments.length === 0) return;
-
     const attachmentsToSend = [...pendingAttachments];
-    appendMessage(text, "user", true, attachmentsToSend);
+    const sent = await sendOutgoingMessage(text, attachmentsToSend);
+    if (!sent) return;
+
+    attachmentsToSend.forEach((item) => URL.revokeObjectURL(item.url));
     pendingAttachments = [];
     renderAttachmentPreview();
     chatInput.value = "";
     autoGrowChatInput();
-
-    window.setTimeout(() => {
-      appendMessage(
-        "Это демо: сообщение и референсы остались только в браузере. Для настоящего чата подключим backend или внешний сервис после согласования.",
-        "system"
-      );
-    }, 450);
   });
 
   const chatToPlainText = () => {
-    const lines = chatHistory.map((item) => {
-      const name = item.type === "user" ? "Клиент" : item.type === "seller" ? "nezhno.art" : "Система";
-      return `${name}: ${item.text}`;
+    const lines = currentMessages.map((item) => {
+      const name = item.sender_id === LINA_USER_ID ? "nezhno.art" : "Клиент";
+      const parts = [item.body || ""];
+      if (item.attachment_name) parts.push(`[Изображение: ${item.attachment_name}]`);
+      return `${name}: ${parts.filter(Boolean).join("\n")}`;
     });
-    return lines.length ? lines.join("\n\n") : "Демо-чат пока пуст.";
+    return lines.length ? lines.join("\n\n") : "Переписка пока пустая.";
   };
 
   copyChatButton?.addEventListener("click", async () => {
@@ -605,7 +1129,53 @@
   openTelegramButton?.addEventListener("click", openTelegram);
   telegramFooterButton?.addEventListener("click", openTelegram);
 
-  // ESC закрывает боковую панель.
+  const handleAuthEvent = async (event, session) => {
+    currentUser = session?.user || null;
+    if (!currentUser) {
+      currentProfile = null;
+      await resetChatState();
+      updateAuthUi();
+      return;
+    }
+
+    await loadOwnProfile();
+    updateAuthUi();
+
+    if (event === "PASSWORD_RECOVERY") {
+      openAuth("password");
+      return;
+    }
+
+    if (event === "SIGNED_IN" && authDialog?.open) {
+      closeAuth();
+    }
+  };
+
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    // Откладываем запросы к Supabase за пределы auth-callback.
+    window.setTimeout(() => handleAuthEvent(event, session), 0);
+  });
+
+  const initializeUserSession = async () => {
+    try {
+      const { data } = await supabaseClient.auth.getSession();
+      currentUser = data?.session?.user || null;
+      if (currentUser) await loadOwnProfile();
+      updateAuthUi();
+
+      // После email-подтверждения implicit flow может вернуть токены в hash.
+      // После того как SDK их обработал, убираем служебные данные из адресной строки.
+      if (location.hash && /access_token|refresh_token|type=recovery/.test(location.hash)) {
+        history.replaceState({}, document.title, `${location.pathname}${location.search}`);
+      }
+    } catch (error) {
+      console.warn("[nezhno.art] Не удалось восстановить сессию:", error);
+      updateAuthUi();
+    }
+  };
+
+  initializeUserSession();
+
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && chatPanel?.classList.contains("open")) closeChat();
   });

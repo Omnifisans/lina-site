@@ -7,6 +7,7 @@
   <meta name="theme-color" content="#f7e6e8" />
   <title>nezhno.art — авторские баннеры, стикеры и модели</title>
   <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="script.js" defer></script>
 </head>
 <body>
@@ -34,6 +35,10 @@
         <button class="icon-button" id="theme-toggle" type="button" aria-label="Переключить тему" title="Переключить тему">
           <span class="theme-icon theme-icon-sun" aria-hidden="true">☀</span>
           <span class="theme-icon theme-icon-moon" aria-hidden="true">☾</span>
+        </button>
+        <button class="account-button" id="account-button" type="button" aria-label="Войти в аккаунт">
+          <span class="account-button-icon" aria-hidden="true">♙</span>
+          <span id="account-button-label">Войти</span>
         </button>
         <button class="button button-small button-primary desktop-contact" type="button" data-open-chat data-service="Общий вопрос">
           Обсудить заказ
@@ -293,24 +298,101 @@
     <button class="gallery-arrow gallery-next" id="gallery-next" type="button" aria-label="Следующая работа">›</button>
   </dialog>
 
+  <dialog class="auth-dialog" id="auth-dialog" aria-labelledby="auth-title">
+    <div class="auth-dialog-card">
+      <button class="dialog-close auth-dialog-close" id="auth-close" type="button" aria-label="Закрыть">×</button>
+
+      <div class="auth-brand">
+        <span class="brand-mark" aria-hidden="true">♡</span>
+        <div>
+          <strong>nezhno.art</strong>
+          <small>личный кабинет</small>
+        </div>
+      </div>
+
+      <section class="auth-view" data-auth-view="login">
+        <span class="section-kicker">Личный чат</span>
+        <h2 id="auth-title">Войти</h2>
+        <p>Войдите, чтобы продолжить переписку с автором с любого устройства.</p>
+        <form class="auth-form" id="login-form">
+          <label><span>Email</span><input id="login-email" type="email" autocomplete="email" required /></label>
+          <label><span>Пароль</span><input id="login-password" type="password" autocomplete="current-password" minlength="8" required /></label>
+          <p class="auth-error" id="login-error" role="alert"></p>
+          <button class="button button-primary button-full" id="login-submit" type="submit">Войти</button>
+        </form>
+        <div class="auth-links">
+          <button type="button" data-auth-switch="register">Создать аккаунт</button>
+          <button type="button" data-auth-switch="recover">Забыли пароль?</button>
+        </div>
+      </section>
+
+      <section class="auth-view" data-auth-view="register" hidden>
+        <span class="section-kicker">Регистрация</span>
+        <h2>Создать аккаунт</h2>
+        <p>Нужен только для личной переписки и сохранения истории сообщений.</p>
+        <form class="auth-form" id="register-form">
+          <label><span>Как к вам обращаться?</span><input id="register-name" type="text" maxlength="60" autocomplete="name" required placeholder="Например, Алекс" /></label>
+          <label><span>Email</span><input id="register-email" type="email" autocomplete="email" required /></label>
+          <label><span>Пароль</span><input id="register-password" type="password" autocomplete="new-password" minlength="8" required /><small>Минимум 8 символов.</small></label>
+          <label><span>Повторите пароль</span><input id="register-password-repeat" type="password" autocomplete="new-password" minlength="8" required /></label>
+          <p class="auth-error" id="register-error" role="alert"></p>
+          <button class="button button-primary button-full" id="register-submit" type="submit">Зарегистрироваться</button>
+        </form>
+        <div class="auth-links auth-links-single"><button type="button" data-auth-switch="login">Уже есть аккаунт → Войти</button></div>
+      </section>
+
+      <section class="auth-view" data-auth-view="recover" hidden>
+        <span class="section-kicker">Восстановление</span>
+        <h2>Забыли пароль?</h2>
+        <p>Укажите email. На него придёт ссылка для смены пароля.</p>
+        <form class="auth-form" id="recover-form">
+          <label><span>Email</span><input id="recover-email" type="email" autocomplete="email" required /></label>
+          <p class="auth-error" id="recover-error" role="alert"></p>
+          <button class="button button-primary button-full" id="recover-submit" type="submit">Отправить письмо</button>
+        </form>
+        <div class="auth-links auth-links-single"><button type="button" data-auth-switch="login">← Вернуться ко входу</button></div>
+      </section>
+
+      <section class="auth-view" data-auth-view="password" hidden>
+        <span class="section-kicker">Новый пароль</span>
+        <h2>Придумайте новый пароль</h2>
+        <p>После сохранения вы останетесь в аккаунте.</p>
+        <form class="auth-form" id="password-form">
+          <label><span>Новый пароль</span><input id="new-password" type="password" autocomplete="new-password" minlength="8" required /></label>
+          <label><span>Повторите пароль</span><input id="new-password-repeat" type="password" autocomplete="new-password" minlength="8" required /></label>
+          <p class="auth-error" id="password-error" role="alert"></p>
+          <button class="button button-primary button-full" id="password-submit" type="submit">Сохранить пароль</button>
+        </form>
+      </section>
+
+      <section class="auth-view auth-success" data-auth-view="success" hidden>
+        <span class="auth-success-icon" aria-hidden="true">✉</span>
+        <span class="section-kicker">Почти готово</span>
+        <h2>Проверьте почту</h2>
+        <p id="auth-success-text">Мы отправили письмо с подтверждением регистрации.</p>
+        <button class="button button-secondary button-full" type="button" data-auth-switch="login">Перейти ко входу</button>
+      </section>
+    </div>
+  </dialog>
+
   <aside class="chat-panel" id="chat-panel" aria-hidden="true" aria-label="Чат с автором">
     <div class="chat-header">
       <div>
         <span class="chat-status-dot" aria-hidden="true"></span>
-        <div><strong>Чат с автором</strong><small>Демо-режим</small></div>
+        <div><strong>Чат с автором</strong><small id="chat-status-text">Личная переписка</small></div>
       </div>
       <button class="icon-button" id="chat-close" type="button" aria-label="Закрыть чат">×</button>
     </div>
 
-    <div class="chat-messages" id="chat-messages" aria-live="polite">
-      <div class="message message-seller">
-        <div class="message-author">nezhno.art</div>
-        <p>Привет! Расскажите, что хотите заказать. Можно начать с пары предложений, а детали уточним дальше ♡</p>
+    <div class="chat-account" id="chat-account">
+      <div>
+        <strong id="chat-account-name">Пользователь</strong>
+        <small id="chat-account-email"></small>
       </div>
-      <div class="chat-demo-note">
-        Сейчас это демонстрация интерфейса. На GitHub Pages настоящий двусторонний чат потребует отдельного сервиса или backend.
-      </div>
+      <button id="chat-logout" type="button">Выйти</button>
     </div>
+
+    <div class="chat-messages" id="chat-messages" aria-live="polite"></div>
 
     <div class="chat-quick" aria-label="Быстрый выбор услуги">
       <button type="button" data-chat-preset="Хочу обсудить баннер" data-brief-service="banner">Баннер</button>
@@ -331,7 +413,7 @@
           </select>
         </label>
         <div id="brief-fields"></div>
-        <button class="button button-secondary button-full" type="submit">Добавить бриф в чат</button>
+        <button class="button button-secondary button-full" type="submit">Отправить бриф</button>
       </form>
     </details>
 
@@ -344,8 +426,8 @@
       </label>
       <input class="sr-only" id="chat-files" type="file" accept="image/*" multiple />
       <label class="sr-only" for="chat-input">Сообщение</label>
-      <textarea id="chat-input" rows="2" maxlength="800" placeholder="Напишите сообщение…"></textarea>
-      <button class="chat-send" type="submit" aria-label="Отправить сообщение">➤</button>
+      <textarea id="chat-input" rows="2" maxlength="4000" placeholder="Напишите сообщение…"></textarea>
+      <button class="chat-send" id="chat-send" type="submit" aria-label="Отправить сообщение">➤</button>
     </form>
 
     <div class="chat-actions">

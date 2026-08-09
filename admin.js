@@ -98,6 +98,27 @@
 
   const toast = document.getElementById("admin-toast");
 
+  const productsTab = document.getElementById("products-tab");
+  const messagesTab = document.getElementById("messages-tab");
+  const messagesBadge = document.getElementById("messages-badge");
+  const adminProductsView = document.getElementById("admin-products-view");
+  const adminMessagesView = document.getElementById("admin-messages-view");
+  const refreshConversationsButton = document.getElementById("refresh-conversations-button");
+  const conversationSearch = document.getElementById("conversation-search");
+  const conversationsLoading = document.getElementById("conversations-loading");
+  const conversationsEmpty = document.getElementById("conversations-empty");
+  const conversationList = document.getElementById("conversation-list");
+  const adminChatPlaceholder = document.getElementById("admin-chat-placeholder");
+  const adminChatActive = document.getElementById("admin-chat-active");
+  const adminChatName = document.getElementById("admin-chat-name");
+  const adminChatEmail = document.getElementById("admin-chat-email");
+  const adminChatMessages = document.getElementById("admin-chat-messages");
+  const adminChatForm = document.getElementById("admin-chat-form");
+  const adminChatInput = document.getElementById("admin-chat-input");
+  const adminChatSend = document.getElementById("admin-chat-send");
+  const adminChatFile = document.getElementById("admin-chat-file");
+  const adminChatAttachmentPreview = document.getElementById("admin-chat-attachment-preview");
+
   // =========================================================
   // State
   // =========================================================
@@ -109,6 +130,17 @@
   let removeExistingImage = false;
   let toastTimer = null;
   let isSaving = false;
+
+  let conversations = [];
+  let conversationProfiles = new Map();
+  let conversationLatest = new Map();
+  let selectedConversation = null;
+  let adminMessageChannel = null;
+  let adminPendingAttachment = null;
+  let adminAttachmentObjectUrl = null;
+  let conversationsLoaded = false;
+  let conversationsRefreshTimer = null;
+  const renderedAdminMessageIds = new Set();
 
   // =========================================================
   // Small helpers
@@ -225,6 +257,11 @@
     authScreen?.classList.add("hidden");
     adminShell?.classList.remove("hidden");
     if (adminUserEmail) adminUserEmail.textContent = user?.email || "Администратор";
+    // Подгружаем счётчик новых диалогов в фоне, даже если открыт каталог.
+    window.setTimeout(() => {
+      subscribeAdminMessages();
+      loadConversations({ quiet: true });
+    }, 0);
   };
 
   const signOutForeignUser = async () => {
@@ -875,6 +912,447 @@
       setButtonLoading(deleteConfirmButton, false, "Удаляем…");
     }
   });
+
+  // =========================================================
+  // Messages / inbox
+  // =========================================================
+
+  const CHAT_BUCKET = "chat-attachments";
+  const MAX_CHAT_IMAGE_SIZE = 50 * 1024 * 1024;
+
+  const formatConversationTime = (value) => {
+    if (!value) return "";
+    const date = new Date(value);
+    const now = new Date();
+    const sameDay = date.toDateString() === now.toDateString();
+    return new Intl.DateTimeFormat("ru-RU", sameDay
+      ? { hour: "2-digit", minute: "2-digit" }
+      : { day: "2-digit", month: "2-digit" }
+    ).format(date);
+  };
+
+  const getSeenKey = (conversationId) => `nezhno-admin-seen-${conversationId}`;
+
+  const getConversationSeenAt = (conversationId) => {
+    try { return localStorage.getItem(getSeenKey(conversationId)) || ""; }
+    catch (_) { return ""; }
+  };
+
+  const markConversationSeen = (conversationId) => {
+    try { localStorage.setItem(getSeenKey(conversationId), new Date().toISOString()); }
+    catch (_) { /* LocalStorage может быть недоступен. */ }
+  };
+
+  const isConversationUnread = (conversation) => {
+    const latest = conversationLatest.get(conversation.id);
+    if (!latest || latest.sender_id === LINA_USER_ID) return false;
+    const seenAt = getConversationSeenAt(conversation.id);
+    return !seenAt || new Date(latest.created_at).getTime() > new Date(seenAt).getTime();
+  };
+
+  const updateMessagesBadge = () => {
+    const unread = conversations.filter(isConversationUnread).length;
+    if (!messagesBadge) return;
+    messagesBadge.textContent = String(unread);
+    messagesBadge.classList.toggle("hidden", unread === 0);
+  };
+
+  const getConversationProfile = (conversation) =>
+    conversationProfiles.get(conversation.user_id) || {
+      display_name: "Пользователь",
+      email: "Email недоступен",
+    };
+
+  const getConversationPreview = (conversation) => {
+    const latest = conversationLatest.get(conversation.id);
+    if (!latest) return "Диалог создан, сообщений пока нет";
+    if (latest.body) return latest.body.replace(/\s+/g, " ").trim();
+    if (latest.attachment_name) return `📎 ${latest.attachment_name}`;
+    return "Новое сообщение";
+  };
+
+  const getFilteredConversations = () => {
+    const query = normalizeText(conversationSearch?.value);
+    if (!query) return conversations;
+    return conversations.filter((conversation) => {
+      const profile = getConversationProfile(conversation);
+      return normalizeText(`${profile.display_name || ""} ${profile.email || ""}`).includes(query);
+    });
+  };
+
+  const renderConversationList = () => {
+    if (!conversationList) return;
+    const filtered = getFilteredConversations();
+    conversationList.innerHTML = "";
+
+    filtered.forEach((conversation) => {
+      const profile = getConversationProfile(conversation);
+      const latest = conversationLatest.get(conversation.id);
+      const unread = isConversationUnread(conversation);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `admin-conversation-item${selectedConversation?.id === conversation.id ? " active" : ""}${unread ? " unread" : ""}`;
+      button.dataset.conversationId = conversation.id;
+
+      const avatar = document.createElement("span");
+      avatar.className = "admin-conversation-avatar";
+      avatar.textContent = (profile.display_name || profile.email || "П").trim().slice(0, 1).toUpperCase();
+
+      const copy = document.createElement("span");
+      copy.className = "admin-conversation-copy";
+      const top = document.createElement("span");
+      top.className = "admin-conversation-top";
+      const name = document.createElement("strong");
+      name.textContent = profile.display_name || "Пользователь";
+      const time = document.createElement("time");
+      time.textContent = formatConversationTime(latest?.created_at || conversation.updated_at || conversation.created_at);
+      top.append(name, time);
+
+      const email = document.createElement("small");
+      email.textContent = profile.email || "";
+      const preview = document.createElement("span");
+      preview.className = "admin-conversation-preview";
+      preview.textContent = getConversationPreview(conversation);
+      copy.append(top, email, preview);
+
+      if (unread) {
+        const dot = document.createElement("i");
+        dot.className = "admin-conversation-unread";
+        dot.setAttribute("aria-label", "Есть новое сообщение");
+        button.append(avatar, copy, dot);
+      } else {
+        button.append(avatar, copy);
+      }
+
+      button.addEventListener("click", () => openAdminConversation(conversation));
+      conversationList.appendChild(button);
+    });
+
+    if (conversationsEmpty) {
+      conversationsEmpty.classList.toggle("hidden", conversations.length !== 0);
+    }
+  };
+
+  const loadConversations = async ({ quiet = false } = {}) => {
+    if (!quiet) conversationsLoading?.classList.remove("hidden");
+    try {
+      const { data: conversationRows, error: conversationError } = await supabaseClient
+        .from("conversations")
+        .select("id,user_id,created_at,updated_at")
+        .order("updated_at", { ascending: false });
+      if (conversationError) throw conversationError;
+
+      conversations = Array.isArray(conversationRows) ? conversationRows : [];
+      const userIds = [...new Set(conversations.map((item) => item.user_id).filter(Boolean))];
+
+      conversationProfiles = new Map();
+      if (userIds.length) {
+        const { data: profilesRows, error: profilesError } = await supabaseClient
+          .from("profiles")
+          .select("id,display_name,email")
+          .in("id", userIds);
+        if (profilesError) throw profilesError;
+        (profilesRows || []).forEach((profile) => conversationProfiles.set(profile.id, profile));
+      }
+
+      conversationLatest = new Map();
+      if (conversations.length) {
+        const { data: latestRows, error: latestError } = await supabaseClient
+          .from("messages")
+          .select("id,conversation_id,sender_id,body,attachment_name,created_at")
+          .order("created_at", { ascending: false })
+          .limit(1000);
+        if (latestError) throw latestError;
+        (latestRows || []).forEach((message) => {
+          if (!conversationLatest.has(message.conversation_id)) {
+            conversationLatest.set(message.conversation_id, message);
+          }
+        });
+      }
+
+      conversationsLoaded = true;
+      renderConversationList();
+      updateMessagesBadge();
+
+      if (selectedConversation) {
+        selectedConversation = conversations.find((item) => item.id === selectedConversation.id) || selectedConversation;
+      }
+    } catch (error) {
+      console.error("[nezhno.art admin] Не удалось загрузить диалоги:", error);
+      showToast("Не удалось загрузить сообщения", "error");
+    } finally {
+      conversationsLoading?.classList.add("hidden");
+    }
+  };
+
+  const createAdminSignedUrl = async (path) => {
+    if (!path) return null;
+    const { data, error } = await supabaseClient.storage.from(CHAT_BUCKET).createSignedUrl(path, 60 * 60);
+    if (error) {
+      console.warn("[nezhno.art admin] Не удалось открыть вложение:", error);
+      return null;
+    }
+    return data?.signedUrl || null;
+  };
+
+  const appendAdminMessage = async (message, { scroll = true } = {}) => {
+    if (!message || !adminChatMessages || renderedAdminMessageIds.has(String(message.id))) return;
+    renderedAdminMessageIds.add(String(message.id));
+    adminChatMessages.querySelector(".admin-chat-empty")?.remove();
+
+    const mine = message.sender_id === LINA_USER_ID;
+    const bubble = document.createElement("article");
+    bubble.className = `admin-message${mine ? " is-mine" : " is-client"}`;
+    bubble.dataset.messageId = String(message.id);
+
+    const author = document.createElement("span");
+    author.className = "admin-message-author";
+    author.textContent = mine ? "Вы · nezhno.art" : getConversationProfile(selectedConversation).display_name || "Клиент";
+    bubble.appendChild(author);
+
+    if (message.body) {
+      const text = document.createElement("p");
+      text.textContent = message.body;
+      bubble.appendChild(text);
+    }
+
+    if (message.attachment_path) {
+      const signedUrl = await createAdminSignedUrl(message.attachment_path);
+      if (signedUrl) {
+        const link = document.createElement("a");
+        link.className = "admin-message-image";
+        link.href = signedUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        const img = document.createElement("img");
+        img.src = signedUrl;
+        img.alt = message.attachment_name ? `Вложение: ${message.attachment_name}` : "Прикреплённое изображение";
+        img.loading = "lazy";
+        link.appendChild(img);
+        bubble.appendChild(link);
+      } else {
+        const fallback = document.createElement("small");
+        fallback.textContent = message.attachment_name ? `Не удалось открыть ${message.attachment_name}` : "Не удалось открыть вложение";
+        bubble.appendChild(fallback);
+      }
+    }
+
+    const time = document.createElement("time");
+    time.dateTime = message.created_at || "";
+    time.textContent = message.created_at
+      ? new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(message.created_at))
+      : "";
+    bubble.appendChild(time);
+    adminChatMessages.appendChild(bubble);
+    if (scroll) adminChatMessages.scrollTop = adminChatMessages.scrollHeight;
+  };
+
+  const loadAdminConversationMessages = async (conversation) => {
+    if (!conversation || !adminChatMessages) return;
+    adminChatMessages.innerHTML = '<div class="admin-chat-loading"><span class="admin-loader" aria-hidden="true"></span><span>Загружаем переписку…</span></div>';
+    renderedAdminMessageIds.clear();
+
+    const { data, error } = await supabaseClient
+      .from("messages")
+      .select("id,conversation_id,sender_id,body,attachment_path,attachment_name,attachment_mime,created_at")
+      .eq("conversation_id", conversation.id)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+
+    adminChatMessages.innerHTML = "";
+    for (const message of data || []) await appendAdminMessage(message, { scroll: false });
+    if (!data?.length) {
+      const empty = document.createElement("div");
+      empty.className = "admin-chat-empty";
+      empty.textContent = "Пользователь пока ничего не написал.";
+      adminChatMessages.appendChild(empty);
+    }
+    adminChatMessages.scrollTop = adminChatMessages.scrollHeight;
+  };
+
+  async function openAdminConversation(conversation) {
+    selectedConversation = conversation;
+    const profile = getConversationProfile(conversation);
+    if (adminChatName) adminChatName.textContent = profile.display_name || "Пользователь";
+    if (adminChatEmail) adminChatEmail.textContent = profile.email || "";
+    adminChatPlaceholder?.classList.add("hidden");
+    adminChatActive?.classList.remove("hidden");
+    markConversationSeen(conversation.id);
+    renderConversationList();
+    updateMessagesBadge();
+
+    try {
+      await loadAdminConversationMessages(conversation);
+      adminChatInput?.focus();
+    } catch (error) {
+      console.error("[nezhno.art admin] Не удалось загрузить переписку:", error);
+      if (adminChatMessages) adminChatMessages.innerHTML = '<div class="admin-chat-empty">Не удалось загрузить переписку.</div>';
+    }
+  }
+
+  const clearAdminAttachment = () => {
+    if (adminAttachmentObjectUrl) URL.revokeObjectURL(adminAttachmentObjectUrl);
+    adminAttachmentObjectUrl = null;
+    adminPendingAttachment = null;
+    if (adminChatFile) adminChatFile.value = "";
+    if (adminChatAttachmentPreview) {
+      adminChatAttachmentPreview.innerHTML = "";
+      adminChatAttachmentPreview.classList.add("hidden");
+    }
+  };
+
+  adminChatFile?.addEventListener("change", () => {
+    const file = adminChatFile.files?.[0] || null;
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showToast("Можно прикреплять только изображения", "error");
+      clearAdminAttachment();
+      return;
+    }
+    if (file.size > MAX_CHAT_IMAGE_SIZE) {
+      showToast("Изображение больше 50 МБ", "error");
+      clearAdminAttachment();
+      return;
+    }
+
+    clearAdminAttachment();
+    adminPendingAttachment = file;
+    adminAttachmentObjectUrl = URL.createObjectURL(file);
+    if (adminChatAttachmentPreview) {
+      adminChatAttachmentPreview.classList.remove("hidden");
+      const img = document.createElement("img");
+      img.src = adminAttachmentObjectUrl;
+      img.alt = file.name;
+      const copy = document.createElement("span");
+      copy.textContent = file.name;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "×";
+      remove.setAttribute("aria-label", "Убрать изображение");
+      remove.addEventListener("click", clearAdminAttachment);
+      adminChatAttachmentPreview.append(img, copy, remove);
+    }
+  });
+
+  const makeAdminStoragePath = (userId, file) => {
+    const cleanName = file.name
+      .normalize("NFKD")
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "image";
+    const unique = typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    return `${userId}/${Date.now()}-${unique}-${cleanName}`;
+  };
+
+  adminChatInput?.addEventListener("input", () => {
+    adminChatInput.style.height = "auto";
+    adminChatInput.style.height = `${Math.min(adminChatInput.scrollHeight, 150)}px`;
+  });
+
+  adminChatInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      adminChatForm?.requestSubmit();
+    }
+  });
+
+  adminChatForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!selectedConversation) return;
+    const text = adminChatInput?.value.trim() || "";
+    const file = adminPendingAttachment;
+    if (!text && !file) return;
+
+    setButtonLoading(adminChatSend, true, "…");
+    let uploadedPath = null;
+    try {
+      let attachment = { path: null, name: null, mime: null };
+      if (file) {
+        uploadedPath = makeAdminStoragePath(selectedConversation.user_id, file);
+        const { error: uploadError } = await supabaseClient.storage.from(CHAT_BUCKET).upload(uploadedPath, file, {
+          contentType: file.type || "image/*",
+          upsert: false,
+        });
+        if (uploadError) throw uploadError;
+        attachment = { path: uploadedPath, name: file.name, mime: file.type || "image/*" };
+      }
+
+      const { data, error } = await supabaseClient
+        .from("messages")
+        .insert({
+          conversation_id: selectedConversation.id,
+          sender_id: LINA_USER_ID,
+          body: text || null,
+          attachment_path: attachment.path,
+          attachment_name: attachment.name,
+          attachment_mime: attachment.mime,
+        })
+        .select("id,conversation_id,sender_id,body,attachment_path,attachment_name,attachment_mime,created_at")
+        .single();
+      if (error) throw error;
+
+      await appendAdminMessage(data);
+      if (adminChatInput) {
+        adminChatInput.value = "";
+        adminChatInput.style.height = "auto";
+      }
+      clearAdminAttachment();
+      markConversationSeen(selectedConversation.id);
+      scheduleConversationRefresh();
+    } catch (error) {
+      console.error("[nezhno.art admin] Не удалось отправить ответ:", error);
+      if (uploadedPath) {
+        try { await supabaseClient.storage.from(CHAT_BUCKET).remove([uploadedPath]); } catch (_) { /* noop */ }
+      }
+      showToast("Не удалось отправить сообщение", "error");
+    } finally {
+      setButtonLoading(adminChatSend, false, "…");
+    }
+  });
+
+  const scheduleConversationRefresh = () => {
+    clearTimeout(conversationsRefreshTimer);
+    conversationsRefreshTimer = setTimeout(() => loadConversations({ quiet: true }), 220);
+  };
+
+  const subscribeAdminMessages = () => {
+    if (adminMessageChannel) return;
+    adminMessageChannel = supabaseClient
+      .channel("admin-all-messages")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        (payload) => {
+          const message = payload.new;
+          if (!message) return;
+          if (selectedConversation?.id === message.conversation_id) {
+            markConversationSeen(selectedConversation.id);
+            window.setTimeout(() => appendAdminMessage(message), 0);
+          }
+          scheduleConversationRefresh();
+        }
+      )
+      .subscribe();
+  };
+
+  const switchAdminView = async (view) => {
+    const messages = view === "messages";
+    adminProductsView?.classList.toggle("hidden", messages);
+    adminMessagesView?.classList.toggle("hidden", !messages);
+    productsTab?.classList.toggle("active", !messages);
+    messagesTab?.classList.toggle("active", messages);
+    productsTab?.setAttribute("aria-selected", String(!messages));
+    messagesTab?.setAttribute("aria-selected", String(messages));
+
+    if (messages) {
+      subscribeAdminMessages();
+      if (!conversationsLoaded) await loadConversations();
+    }
+  };
+
+  productsTab?.addEventListener("click", () => switchAdminView("products"));
+  messagesTab?.addEventListener("click", () => switchAdminView("messages"));
+  refreshConversationsButton?.addEventListener("click", () => loadConversations());
+  conversationSearch?.addEventListener("input", renderConversationList);
 
   // =========================================================
   // Start

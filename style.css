@@ -1952,3 +1952,322 @@ html[data-theme="dark"] .text-link {
     transform: none;
   }
 }
+
+/* =========================================================
+   Account, registration and real chat
+   ========================================================= */
+.account-button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  transition: border-color var(--transition), transform var(--transition), background var(--transition);
+}
+
+.account-button:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: var(--bg-soft);
+}
+
+.account-button-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.auth-dialog {
+  width: min(500px, calc(100% - 28px));
+  max-height: min(88dvh, 760px);
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 26px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 28px 90px rgba(20, 10, 12, 0.28);
+}
+
+.auth-dialog::backdrop {
+  background: rgba(20, 10, 12, 0.5);
+  backdrop-filter: blur(5px);
+}
+
+.auth-dialog-card {
+  position: relative;
+  padding: 34px;
+}
+
+.auth-dialog-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.auth-brand strong,
+.auth-brand small {
+  display: block;
+}
+
+.auth-brand small {
+  margin-top: 2px;
+  color: var(--text-soft);
+  font-size: 0.72rem;
+}
+
+.auth-view[hidden] {
+  display: none;
+}
+
+.auth-view h2 {
+  margin: 8px 0 8px;
+  font-size: clamp(2rem, 7vw, 3rem);
+}
+
+.auth-view > p {
+  margin: 0 0 22px;
+  color: var(--text-soft);
+}
+
+.auth-form {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.auth-form label > span {
+  color: var(--text-soft);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.auth-form label > small {
+  color: var(--text-soft);
+  font-size: 0.69rem;
+}
+
+.auth-form input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  outline: none;
+  border-radius: 13px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.auth-form input:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.auth-error {
+  display: none;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, #b84b58 35%, var(--line));
+  border-radius: 11px;
+  background: color-mix(in srgb, #b84b58 8%, var(--surface));
+  color: #b84b58;
+  font-size: 0.78rem;
+}
+
+.auth-error.visible {
+  display: block;
+}
+
+.auth-links {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.auth-links-single {
+  justify-content: center;
+}
+
+.auth-links button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.auth-success {
+  text-align: center;
+}
+
+.auth-success-icon {
+  display: grid;
+  width: 66px;
+  height: 66px;
+  margin: 0 auto 18px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg-soft);
+  color: var(--accent-strong);
+  font-size: 1.7rem;
+}
+
+.chat-account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-soft) 55%, var(--surface));
+}
+
+.chat-account strong,
+.chat-account small {
+  display: block;
+  overflow: hidden;
+  max-width: 270px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-account strong {
+  font-size: 0.78rem;
+}
+
+.chat-account small {
+  margin-top: 2px;
+  color: var(--text-soft);
+  font-size: 0.68rem;
+}
+
+.chat-account button {
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.chat-state {
+  margin: 20px auto;
+  padding: 12px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 13px;
+  color: var(--text-soft);
+  text-align: center;
+  font-size: 0.78rem;
+}
+
+.chat-state strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--text);
+}
+
+.chat-state p {
+  margin: 0;
+}
+
+.chat-state-small {
+  padding: 9px 12px;
+}
+
+.message-intro {
+  opacity: 0.92;
+}
+
+.message-time {
+  display: block;
+  margin-top: 6px;
+  color: currentColor;
+  opacity: 0.55;
+  font-size: 0.62rem;
+  text-align: right;
+}
+
+.message-attachments {
+  grid-template-columns: 1fr;
+}
+
+.message-attachments a {
+  display: block;
+  overflow: hidden;
+  border-radius: 10px;
+}
+
+.message-attachments img {
+  display: block;
+  width: min(240px, 100%);
+  aspect-ratio: auto;
+  max-height: 300px;
+  object-fit: cover;
+}
+
+.message-file-error {
+  display: block;
+  margin-top: 7px;
+  opacity: 0.7;
+  font-size: 0.68rem;
+}
+
+.chat-send:disabled,
+.chat-attach:has(+ input:disabled) {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+@media (max-width: 720px) {
+  .account-button {
+    width: 42px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .account-button #account-button-label {
+    display: none;
+  }
+
+  .auth-dialog-card {
+    padding: 28px 20px 24px;
+  }
+}
+
+@media (max-width: 420px) {
+  .auth-links {
+    align-items: center;
+    flex-direction: column;
+  }
+
+  .chat-account strong,
+  .chat-account small {
+    max-width: 230px;
+  }
+}
