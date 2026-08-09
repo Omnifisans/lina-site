@@ -353,24 +353,46 @@
         <div class="auth-links auth-links-single"><button type="button" data-auth-switch="login">← Вернуться ко входу</button></div>
       </section>
 
-      <section class="auth-view" data-auth-view="password" hidden>
-        <span class="section-kicker">Новый пароль</span>
-        <h2>Придумайте новый пароль</h2>
-        <p>После сохранения вы останетесь в аккаунте.</p>
-        <form class="auth-form" id="password-form">
-          <label><span>Новый пароль</span><input id="new-password" type="password" autocomplete="new-password" minlength="8" required /></label>
-          <label><span>Повторите пароль</span><input id="new-password-repeat" type="password" autocomplete="new-password" minlength="8" required /></label>
-          <p class="auth-error" id="password-error" role="alert"></p>
-          <button class="button button-primary button-full" id="password-submit" type="submit">Сохранить пароль</button>
-        </form>
-      </section>
-
       <section class="auth-view auth-success" data-auth-view="success" hidden>
         <span class="auth-success-icon" aria-hidden="true">✉</span>
         <span class="section-kicker">Почти готово</span>
         <h2>Проверьте почту</h2>
         <p id="auth-success-text">Мы отправили письмо с подтверждением регистрации.</p>
         <button class="button button-secondary button-full" type="button" data-auth-switch="login">Перейти ко входу</button>
+      </section>
+    </div>
+  </dialog>
+
+  <dialog class="recovery-dialog" id="recovery-dialog" aria-labelledby="recovery-title">
+    <div class="recovery-dialog-card">
+      <section class="recovery-view" data-recovery-view="form">
+        <div class="recovery-mark" aria-hidden="true">✦</div>
+        <span class="section-kicker">Безопасное восстановление</span>
+        <h2 id="recovery-title">Создайте новый пароль</h2>
+        <p class="recovery-intro">Ссылка из письма уже подтвердила, какой аккаунт восстанавливается. Осталось придумать новый пароль.</p>
+
+        <form class="auth-form" id="password-form">
+          <label>
+            <span>Новый пароль</span>
+            <input id="new-password" type="password" autocomplete="new-password" minlength="8" required autofocus />
+            <small>Минимум 8 символов.</small>
+          </label>
+          <label><span>Повторите пароль</span><input id="new-password-repeat" type="password" autocomplete="new-password" minlength="8" required /></label>
+          <p class="auth-error" id="password-error" role="alert"></p>
+          <button class="button button-primary button-full" id="password-submit" type="submit">Сохранить новый пароль</button>
+        </form>
+
+        <div class="recovery-actions">
+          <button class="recovery-cancel" id="recovery-cancel" type="button">Отменить восстановление</button>
+        </div>
+      </section>
+
+      <section class="recovery-view recovery-success" data-recovery-view="success" hidden>
+        <div class="recovery-mark recovery-mark-success" aria-hidden="true">✓</div>
+        <span class="section-kicker">Готово</span>
+        <h2>Пароль обновлён</h2>
+        <p>Новый пароль сохранён. Вы уже вошли в свой аккаунт и можете продолжить пользоваться сайтом.</p>
+        <button class="button button-primary button-full" id="recovery-done" type="button">Продолжить на сайте</button>
       </section>
     </div>
   </dialog>

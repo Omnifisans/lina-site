@@ -13,6 +13,7 @@
   const LINA_USER_ID = "984948c4-d839-4cc7-9635-8868c7ddc6a7";
   const CHAT_BUCKET = "chat-attachments";
   const MAX_CHAT_IMAGE_SIZE = 50 * 1024 * 1024;
+  const AUTH_REDIRECT_URL = "https://omnifisans.github.io/lina-site/";
 
   if (!window.supabase?.createClient) {
     console.error("[nezhno.art] Supabase JS не загрузился.");
@@ -39,6 +40,18 @@
       },
     }
   );
+
+  // Ловим auth-события сразу после создания клиента. Это особенно важно для
+  // PASSWORD_RECOVERY: событие приходит во время обработки ссылки из письма.
+  const pendingAuthEvents = [];
+  let authEventHandler = null;
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    if (typeof authEventHandler === "function") {
+      window.setTimeout(() => authEventHandler(event, session), 0);
+    } else {
+      pendingAuthEvents.push([event, session]);
+    }
+  });
 
   const serviceGrid = document.getElementById("service-grid");
 
@@ -359,6 +372,10 @@
   const recoverError = document.getElementById("recover-error");
   const recoverSubmit = document.getElementById("recover-submit");
 
+  const recoveryDialog = document.getElementById("recovery-dialog");
+  const recoveryViews = document.querySelectorAll("[data-recovery-view]");
+  const recoveryCancel = document.getElementById("recovery-cancel");
+  const recoveryDone = document.getElementById("recovery-done");
   const passwordForm = document.getElementById("password-form");
   const newPassword = document.getElementById("new-password");
   const newPasswordRepeat = document.getElementById("new-password-repeat");
@@ -395,6 +412,7 @@
   let pendingAttachments = [];
   let pendingService = "";
   let isSendingMessage = false;
+  let isPasswordRecovery = false;
   const renderedMessageIds = new Set();
 
   const setInlineError = (element, message = "") => {
@@ -420,7 +438,7 @@
     authViews.forEach((view) => {
       view.hidden = view.dataset.authView !== name;
     });
-    [loginError, registerError, recoverError, passwordError].forEach((item) => setInlineError(item, ""));
+    [loginError, registerError, recoverError].forEach((item) => setInlineError(item, ""));
   };
 
   const openAuth = (view = "login") => {
@@ -437,6 +455,33 @@
     if (authDialog?.open && typeof authDialog.close === "function") authDialog.close();
     else authDialog?.removeAttribute("open");
   };
+
+  const showRecoveryView = (name) => {
+    recoveryViews.forEach((view) => {
+      view.hidden = view.dataset.recoveryView !== name;
+    });
+    setInlineError(passwordError, "");
+  };
+
+  const openRecoveryDialog = () => {
+    closeAuth();
+    showRecoveryView("form");
+    if (typeof recoveryDialog?.showModal === "function") {
+      if (!recoveryDialog.open) recoveryDialog.showModal();
+    } else {
+      recoveryDialog?.setAttribute("open", "");
+    }
+    window.setTimeout(() => newPassword?.focus(), 80);
+  };
+
+  const closeRecoveryDialog = () => {
+    if (recoveryDialog?.open && typeof recoveryDialog.close === "function") recoveryDialog.close();
+    else recoveryDialog?.removeAttribute("open");
+  };
+
+  // Не даём закрыть окно восстановления клавишей Escape: recovery-сессия уже
+  // активна. Для выхода есть явная кнопка «Отменить восстановление».
+  recoveryDialog?.addEventListener("cancel", (event) => event.preventDefault());
 
   authClose?.addEventListener("click", closeAuth);
   authDialog?.addEventListener("click", (event) => {
@@ -562,7 +607,10 @@
       const { data, error } = await supabaseClient.auth.signUp({
         email,
         password,
-        options: { data: { display_name: displayName } },
+        options: {
+          data: { display_name: displayName },
+          emailRedirectTo: AUTH_REDIRECT_URL,
+        },
       });
       if (error) throw error;
 
@@ -600,7 +648,9 @@
     }
     setLoadingButton(recoverSubmit, true, "Отправляем…");
     try {
-      const { error } = await supabaseClient.auth.resetPasswordForEmail(email);
+      const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+        redirectTo: AUTH_REDIRECT_URL,
+      });
       if (error) throw error;
       if (authSuccessText) authSuccessText.textContent = `Если аккаунт с адресом ${email} существует, на него отправлено письмо для смены пароля.`;
       showAuthView("success");
@@ -630,14 +680,33 @@
       const { error } = await supabaseClient.auth.updateUser({ password });
       if (error) throw error;
       passwordForm.reset();
-      closeAuth();
-      showToast("Пароль обновлён");
+      isPasswordRecovery = false;
+      showRecoveryView("success");
+      if (location.hash || /[?&](type|code)=/.test(location.search)) {
+        history.replaceState({}, document.title, location.pathname);
+      }
     } catch (error) {
       console.warn("[nezhno.art] Ошибка смены пароля:", error);
       setInlineError(passwordError, error?.message || "Не удалось изменить пароль.");
     } finally {
       setLoadingButton(passwordSubmit, false, "Сохраняем…");
     }
+  });
+
+  recoveryCancel?.addEventListener("click", async () => {
+    isPasswordRecovery = false;
+    closeRecoveryDialog();
+    try {
+      await supabaseClient.auth.signOut();
+    } catch (_) {
+      // Даже если сеть отвалилась, локальная recovery-модалка всё равно закрывается.
+    }
+    showToast("Восстановление отменено");
+  });
+
+  recoveryDone?.addEventListener("click", () => {
+    closeRecoveryDialog();
+    showToast("Новый пароль сохранён");
   });
 
   const ensureConversation = async () => {
@@ -1131,41 +1200,62 @@
 
   const handleAuthEvent = async (event, session) => {
     currentUser = session?.user || null;
+
+    if (event === "PASSWORD_RECOVERY" && currentUser) {
+      isPasswordRecovery = true;
+      openRecoveryDialog();
+    }
+
     if (!currentUser) {
       currentProfile = null;
       await resetChatState();
       updateAuthUi();
+      if (event === "SIGNED_OUT") closeRecoveryDialog();
       return;
     }
 
     await loadOwnProfile();
     updateAuthUi();
 
-    if (event === "PASSWORD_RECOVERY") {
-      openAuth("password");
-      return;
-    }
+    if (event === "PASSWORD_RECOVERY") return;
 
-    if (event === "SIGNED_IN" && authDialog?.open) {
+    // Во время recovery Supabase уже создал временную сессию пользователя.
+    // Не закрываем интерфейс восстановления из-за сопутствующего SIGNED_IN.
+    if (event === "SIGNED_IN" && authDialog?.open && !isPasswordRecovery) {
       closeAuth();
     }
   };
 
-  supabaseClient.auth.onAuthStateChange((event, session) => {
-    // Откладываем запросы к Supabase за пределы auth-callback.
+  authEventHandler = handleAuthEvent;
+  pendingAuthEvents.splice(0).forEach(([event, session]) => {
     window.setTimeout(() => handleAuthEvent(event, session), 0);
   });
 
   const initializeUserSession = async () => {
     try {
+      const hashParams = new URLSearchParams(location.hash.replace(/^#/, ""));
+      const redirectError = hashParams.get("error_description") || "";
+      const redirectErrorCode = hashParams.get("error_code") || "";
+
       const { data } = await supabaseClient.auth.getSession();
       currentUser = data?.session?.user || null;
       if (currentUser) await loadOwnProfile();
       updateAuthUi();
 
-      // После email-подтверждения implicit flow может вернуть токены в hash.
-      // После того как SDK их обработал, убираем служебные данные из адресной строки.
-      if (location.hash && /access_token|refresh_token|type=recovery/.test(location.hash)) {
+      if (redirectError) {
+        const expired = /expired|otp_expired/i.test(`${redirectErrorCode} ${redirectError}`);
+        openAuth("recover");
+        setInlineError(
+          recoverError,
+          expired
+            ? "Ссылка для восстановления устарела. Запросите новое письмо."
+            : "Не удалось использовать ссылку восстановления. Запросите новую."
+        );
+      }
+
+      // После того как Supabase обработал токены/ошибку из URL, убираем
+      // служебные параметры из адресной строки. Сама сессия уже сохранена SDK.
+      if (location.hash && /access_token|refresh_token|type=recovery|error_code|error_description/.test(location.hash)) {
         history.replaceState({}, document.title, `${location.pathname}${location.search}`);
       }
     } catch (error) {
