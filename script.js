@@ -5,6 +5,46 @@
   // Пример: const TELEGRAM_USERNAME = "nezhno_art";
   const TELEGRAM_USERNAME = "";
 
+  // -------------------------
+  // Supabase: первый тест подключения
+  // -------------------------
+  const SUPABASE_URL = "https://dalipumytxktfrtqhxxm.supabase.co";
+  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_re7xSQ02x55-CTUDSbIpYQ_1qX8tRqN";
+
+  const testSupabaseConnection = async () => {
+    try {
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/products?select=id,title,price_from&order=id.asc`,
+        {
+          headers: {
+            apikey: SUPABASE_PUBLISHABLE_KEY,
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const details = await response.text();
+        throw new Error(`HTTP ${response.status}: ${details}`);
+      }
+
+      const products = await response.json();
+      console.log("[nezhno.art] Товары из Supabase:", products);
+
+      if (products.length > 0) {
+        console.log(
+          `[nezhno.art] Supabase подключён: ${products[0].title} — от ${products[0].price_from} ₽`
+        );
+      } else {
+        console.warn("[nezhno.art] Supabase отвечает, но таблица products пуста.");
+      }
+    } catch (error) {
+      console.error("[nezhno.art] Ошибка подключения к Supabase:", error);
+    }
+  };
+
+  testSupabaseConnection();
+
   const root = document.documentElement;
   const body = document.body;
   const toast = document.getElementById("toast");
